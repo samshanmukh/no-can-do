@@ -2,16 +2,23 @@ import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  AI_PROVIDERS,
+  CLIENT_AI_HEADERS,
+  getPublicAiStatus,
+  parseClientAiCredential,
+  requestProviderStructuredOutput,
+} from "./lib/ai-providers.mjs";
 
 const ROOT = fileURLToPath(new URL("./public", import.meta.url));
-export const DEFAULT_MODEL = "google/gemini-3.1-flash-lite";
-export const CLIENT_OPENROUTER_KEY_HEADER = "authorization";
+export const DEFAULT_MODEL = AI_PROVIDERS.openrouter.defaultModel;
+export const CLIENT_AI_PROVIDER_HEADER = CLIENT_AI_HEADERS.provider;
+export const CLIENT_OPENROUTER_KEY_HEADER = CLIENT_AI_HEADERS.authorization;
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const API_TIMEOUT_MS = 8_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 40;
 const MAX_IN_FLIGHT = 3;
-const CLIENT_OPENROUTER_KEY_PATTERN = /^sk-or-v1-[A-Za-z0-9._~+/-]+=*$/;
 
 export const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self'",
@@ -153,25 +160,17 @@ export function extractOutputText(response) {
       if (content?.type === "output_text" && content.text) return content.text;
     }
   }
+  for (const content of response?.content ?? []) {
+    if (content?.type === "text" && content.text) return content.text;
+  }
   return "";
 }
 
 export function parseClientOpenRouterKey(value) {
-  if (value === undefined || value === null || value === "") return "";
-  if (Array.isArray(value)) {
-    const error = new Error("OpenRouter authorization was invalid.");
-    error.statusCode = 401;
-    throw error;
-  }
-  const match = /^Bearer ([^\s,]+)$/i.exec(String(value));
-  const key = match?.[1] || "";
-  if (key.length < 20 || key.length > 512 || !CLIENT_OPENROUTER_KEY_PATTERN.test(key)) {
-    const error = new Error("OpenRouter authorization was invalid.");
-    error.statusCode = 401;
-    throw error;
-  }
-  return key;
+  return parseClientAiCredential({ authorization: value })?.apiKey || "";
 }
+
+export { getPublicAiStatus, parseClientAiCredential };
 
 function validateStructuredValue(value, schema, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -186,8 +185,18 @@ function validateStructuredValue(value, schema, label) {
       throw new Error(`The model ${label} contained unexpected fields.`);
     }
   }
+  const normalized = { ...value };
   for (const [key, rule] of Object.entries(schema.properties)) {
-    const field = value[key];
+    let field = normalized[key];
+    if (rule.enum && typeof field === "string") {
+      const canonical = rule.enum.find((entry) => (
+        typeof entry === "string" && entry.toLowerCase() === field.toLowerCase()
+      ));
+      if (canonical) {
+        field = canonical;
+        normalized[key] = canonical;
+      }
+    }
     if (rule.type === "string" && typeof field !== "string") {
       throw new Error(`The model ${label} had an invalid ${key}.`);
     }
@@ -204,7 +213,7 @@ function validateStructuredValue(value, schema, label) {
       throw new Error(`The model ${label} had an invalid ${key}.`);
     }
   }
-  return value;
+  return normalized;
 }
 
 function parseStructuredResponse(response, schema, label) {
@@ -264,78 +273,7 @@ function sendJson(response, statusCode, body) {
   response.end(JSON.stringify(body));
 }
 
-async function requestStructuredOutput({ instructions, userContent, schema, schemaName, signal, clientApiKey }) {
-  const apiKey = clientApiKey || process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    const error = new Error("OpenRouter is not configured. Scripted genius remains available.");
-    error.statusCode = 503;
-    throw error;
-  }
-
-  let apiResponse;
-  try {
-    apiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      signal,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://no-can-do.vercel.app",
-        "X-OpenRouter-Title": "NO CAN DO",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL,
-        messages: [
-          { role: "system", content: instructions.trim() },
-          { role: "user", content: userContent },
-        ],
-        max_tokens: 300,
-        reasoning: { effort: "minimal", exclude: true },
-        provider: {
-          require_parameters: true,
-          zdr: true,
-          data_collection: "deny",
-        },
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: schemaName,
-            strict: true,
-            schema,
-          },
-        },
-      }),
-    });
-  } catch (error) {
-    if (signal?.aborted) {
-      const timeoutError = new Error("Live judgment timed out.");
-      timeoutError.statusCode = 504;
-      throw timeoutError;
-    }
-    throw error;
-  }
-
-  const payload = await apiResponse.json().catch(() => ({}));
-  if (!apiResponse.ok) {
-    console.error(`[OpenRouter ${apiResponse.status}] ${payload?.error?.code || "upstream_error"}`);
-    const upstreamMessages = {
-      401: "OpenRouter rejected that API key.",
-      402: "That OpenRouter key needs credits.",
-      403: "That OpenRouter key cannot access this model.",
-    };
-    const error = new Error(
-      upstreamMessages[apiResponse.status]
-      || "Live AI could not hear this case. Scripted precedent is still available.",
-    );
-    error.statusCode = upstreamMessages[apiResponse.status]
-      ? apiResponse.status
-      : apiResponse.status === 429 ? 503 : 502;
-    throw error;
-  }
-  return payload;
-}
-
-export async function judgeObject(body, signal, { clientApiKey = "" } = {}) {
+export async function judgeObject(body, signal, { clientApiKey = "", clientCredential = null } = {}) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     const error = new Error("Request body must be an object.");
     error.statusCode = 400;
@@ -356,32 +294,35 @@ export async function judgeObject(body, signal, { clientApiKey = "" } = {}) {
     throw error;
   }
 
-  const model = process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
   const userText = hint
     ? `Judge the central object. The presenter says it may be: ${String(hint).slice(0, 120)}`
     : "Judge the single most prominent object being presented to the trash can.";
 
-  const payload = await requestStructuredOutput({
+  const result = await requestProviderStructuredOutput({
     instructions: BINJAMIN_INSTRUCTIONS,
-    userContent: [
-      { type: "text", text: userText },
-      { type: "image_url", image_url: { url: image } },
-    ],
+    userText,
+    image,
     schema: VERDICT_SCHEMA,
     schemaName: "binjamin_verdict",
     signal,
-    clientApiKey,
+    clientCredential: clientCredential || (clientApiKey
+      ? { provider: "openrouter", apiKey: clientApiKey }
+      : null),
   });
 
   try {
-    return { ...parseVerdictResponse(payload), model };
+    return {
+      ...parseVerdictResponse(result.payload),
+      model: result.model,
+      provider: result.provider,
+    };
   } catch (error) {
     error.statusCode = 502;
     throw error;
   }
 }
 
-export async function appealVerdict(body, signal, { clientApiKey = "" } = {}) {
+export async function appealVerdict(body, signal, { clientApiKey = "", clientCredential = null } = {}) {
   const verdict = body?.verdict;
   const appeal = typeof body?.appeal === "string" ? body.appeal.trim().slice(0, 320) : "";
   if (!verdict || typeof verdict !== "object" || Array.isArray(verdict) || !appeal) {
@@ -396,16 +337,22 @@ export async function appealVerdict(body, signal, { clientApiKey = "" } = {}) {
     verdict: verdict.verdict === "accept" ? "accept" : "refuse",
     appeal,
   };
-  const payload = await requestStructuredOutput({
+  const result = await requestProviderStructuredOutput({
     instructions: APPEAL_INSTRUCTIONS,
-    userContent: `CASE FILE:\n${JSON.stringify(caseFile)}\n\nIssue the final ruling.`,
+    userText: `CASE FILE:\n${JSON.stringify(caseFile)}\n\nIssue the final ruling.`,
     schema: APPEAL_SCHEMA,
     schemaName: "supreme_court_of_refuse_ruling",
     signal,
-    clientApiKey,
+    clientCredential: clientCredential || (clientApiKey
+      ? { provider: "openrouter", apiKey: clientApiKey }
+      : null),
   });
   try {
-    return { ...parseAppealResponse(payload), model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL };
+    return {
+      ...parseAppealResponse(result.payload),
+      model: result.model,
+      provider: result.provider,
+    };
   } catch (error) {
     error.statusCode = 502;
     throw error;
@@ -472,12 +419,7 @@ export function createServer() {
       }
 
       if (request.method === "GET" && url.pathname === "/api/status") {
-        sendJson(response, 200, {
-          aiConfigured: Boolean(process.env.OPENROUTER_API_KEY),
-          provider: "openrouter",
-          model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL,
-          offlineReady: true,
-        });
+        sendJson(response, 200, getPublicAiStatus());
         return;
       }
 
@@ -501,12 +443,21 @@ export function createServer() {
             throw error;
           }
         }
-        const clientApiKey = parseClientOpenRouterKey(
-          request.headers[CLIENT_OPENROUTER_KEY_HEADER],
-        );
+        const clientCredential = parseClientAiCredential({
+          authorization: request.headers[CLIENT_OPENROUTER_KEY_HEADER],
+          provider: request.headers[CLIENT_AI_PROVIDER_HEADER],
+        });
 
         const now = Date.now();
         const client = request.socket.remoteAddress || "local";
+        if (rateLimits.size > 256) {
+          for (const [address, entry] of rateLimits) {
+            if (now - entry.startedAt >= RATE_LIMIT_WINDOW_MS) rateLimits.delete(address);
+          }
+        }
+        if (rateLimits.size >= 1_024 && !rateLimits.has(client)) {
+          rateLimits.delete(rateLimits.keys().next().value);
+        }
         const existing = rateLimits.get(client);
         const bucket = !existing || now - existing.startedAt >= RATE_LIMIT_WINDOW_MS
           ? { count: 0, startedAt: now }
@@ -529,8 +480,8 @@ export function createServer() {
         try {
           const payload = await runTimedOperation(request, response, (signal) => (
             url.pathname === "/api/judge"
-              ? judgeObject(body, signal, { clientApiKey })
-              : appealVerdict(body, signal, { clientApiKey })
+              ? judgeObject(body, signal, { clientCredential })
+              : appealVerdict(body, signal, { clientCredential })
           ));
           if (!response.destroyed) sendJson(response, 200, payload);
         } finally {

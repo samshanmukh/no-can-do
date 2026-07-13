@@ -33,34 +33,45 @@ Every verdict receives a case number and is saved locally in the Hall of Potenti
 
 ## Optional live AI vision
 
-The scripted mode is fully local. For the fastest demo setup, click **ADD KEY** in the header and paste an OpenRouter API key. The key is kept only in the current page's memory, sent through the same-origin `/api` proxy only for live judgments and appeals, and forgotten on refresh or tab close. It is never written to local storage, cookies, URLs, or the service-worker cache. A dedicated, low-limit demo key is recommended.
+The scripted mode is fully local. For the fastest live setup, click **ADD KEY**, choose **OpenRouter**, **OpenAI**, **Grok**, or **Claude**, and paste that provider's API key. The key is kept only in page memory, sent to the same-origin `/api` proxy for live judgments and appeals, and forgotten on refresh or tab close. It is never written to local storage, cookies, URLs, or the service-worker cache. The proxy sees the key transiently so it can call the chosen provider; use a dedicated, low-limit demo key.
 
-For a shared deployment that should work without each visitor bringing a key, copy the environment example and add a host-side key:
+Each option uses a curated fast model with image input and schema-constrained output:
+
+| Web choice | Provider | Default model |
+| --- | --- | --- |
+| OpenRouter | OpenRouter | `google/gemini-3.1-flash-lite` |
+| OpenAI | OpenAI | `gpt-5.6-luna` |
+| Grok | xAI | `grok-4.3` |
+| Claude | Anthropic | `claude-haiku-4-5-20251001` |
+
+Browser-supplied keys always use the curated model shown above; deployment model overrides cannot steer or increase the cost of a visitor's key. For a private or admission-controlled deployment that should work without visitors bringing keys, copy the environment example, explicitly enable host funding, choose a provider, and add its key:
 
 ```bash
 cp .env.example .env
 ```
 
 ```dotenv
+ALLOW_HOST_AI=true
+AI_PROVIDER=openrouter
 OPENROUTER_API_KEY=your_key_here
 OPENROUTER_MODEL=google/gemini-3.1-flash-lite
 ```
 
-Restart the server and select **Live AI**. Environment keys remain server-side; a temporary browser key is forwarded only for that request and takes precedence without changing server state. Camera frames are sent once per judgment, and each OpenRouter request requires a zero-data-retention endpoint and denies provider data collection; the app does not intentionally save frames. See OpenRouter's [ZDR guide](https://openrouter.ai/docs/guides/features/zdr).
+Use `AI_PROVIDER=openai`, `xai`, or `anthropic` with `OPENAI_API_KEY`, `XAI_API_KEY`, or `ANTHROPIC_API_KEY` instead. Optional host-only model overrides are `OPENAI_MODEL`, `XAI_MODEL`, and `ANTHROPIC_MODEL`; an override must support image input and strict structured output on that provider endpoint. Host-funded inference is deliberately disabled unless `ALLOW_HOST_AI=true`: a public function without authentication or a durable quota can be automated to spend its host key. Use a hard provider spending cap plus real admission control before enabling it publicly. Browser BYOK needs no host environment variables.
 
-The server uses OpenRouter's Chat Completions API with a base64 image input and strict JSON-schema output. The default is the low-latency, vision-capable `google/gemini-3.1-flash-lite`, and any compatible model can be selected with `OPENROUTER_MODEL`. See OpenRouter's official [image input guide](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding) and [structured outputs guide](https://openrouter.ai/docs/guides/features/structured-outputs).
+Camera frames are sent once per judgment and are not intentionally saved by NO CAN DO. Provider privacy and retention terms still apply. OpenRouter requests require a zero-data-retention route and deny provider data collection; OpenAI and xAI requests set `store: false`; Anthropic uses its native Messages API. Contract references: [OpenRouter image input](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding) and [structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs), [OpenAI vision](https://developers.openai.com/api/docs/guides/images-vision) and [structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs), [xAI image understanding](https://docs.x.ai/developers/model-capabilities/images/understanding) and [structured outputs](https://docs.x.ai/developers/model-capabilities/text/structured-outputs), and [Anthropic vision](https://platform.claude.com/docs/en/build-with-claude/vision) and [structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
 
 If the API is unavailable or takes roughly seven seconds, Binjamin switches to an object-agnostic local verdict so the joke lands without claiming a blurry coffee cup is a sock. Emergency scripted prop buttons cancel a stalled live request immediately.
 
-The server binds to loopback only, keeps the API key server-side, rejects cross-origin and non-JSON judgment requests, limits request size/rate/concurrency, validates structured output again at the trust boundary, and applies restrictive browser security headers. `/api/health` is available for a pre-demo check.
+The local server binds to loopback, keeps host keys server-side, rejects cross-origin and non-JSON judgment requests, bounds request size/rate/concurrency, validates structured output again at the trust boundary, and applies restrictive browser security headers. Vercel's included counters are per function instance and are not durable abuse protection. `/api/health` is available for a pre-demo check.
 
 ## Deploy on Vercel
 
-Vercel serves the experience from `public/` and deploys the handlers in `api/` as Node.js Functions. Pushes to the connected `main` branch deploy automatically.
+Vercel serves the experience from `public/` and deploys the handlers in `api/` as Node.js Functions. Pushes to `main` deploy automatically when the project has Git integration configured.
 
-Add `OPENROUTER_API_KEY` and, optionally, `OPENROUTER_MODEL` in the Vercel project settings for host-provided live judgments. This is optional: visitors can instead use **ADD KEY** for a temporary tab-only key. Without either kind of key, the deployed app still runs its complete scripted demo and reports that live AI is unavailable.
+The safe public default is browser BYOK through **ADD KEY**. For protected host-funded judgments, add `ALLOW_HOST_AI=true`, `AI_PROVIDER`, and that provider's `*_API_KEY` plus an optional `*_MODEL` in Vercel project settings. Without a browser key or explicitly enabled host key, the deployed app still runs its complete scripted demo and reports that live AI is unavailable.
 
-Validate the exact production build locally with:
+After installing the Vercel CLI and linking/pulling the project configuration, validate the exact production build locally with:
 
 ```bash
 vercel build --prod

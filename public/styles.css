@@ -1465,11 +1465,101 @@ dialog[open] {
 }
 
 .api-key-modal {
-  width: min(620px, calc(100vw - 30px));
+  width: min(760px, calc(100vw - 30px));
 }
 
 .api-key-sheet .modal-stripe {
   background: var(--acid);
+}
+
+.provider-picker {
+  min-width: 0;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+
+.provider-picker legend {
+  margin-bottom: 7px;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 7px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.provider-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.provider-option {
+  position: relative;
+  cursor: pointer;
+}
+
+.provider-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.provider-option > span {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  min-height: 66px;
+  padding: 11px 12px;
+  border: 2px solid var(--ink);
+  background: #fffdf7;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.provider-option:hover > span {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.provider-option input:checked + span {
+  background: var(--acid);
+  box-shadow: 4px 4px 0 var(--ink);
+  transform: translate(-2px, -2px);
+}
+
+.provider-option input:focus-visible + span {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.provider-option strong,
+.provider-option small,
+.provider-option em {
+  font-family: var(--mono);
+  font-style: normal;
+}
+
+.provider-option strong {
+  font-size: 11px;
+}
+
+.provider-option small {
+  grid-row: 2;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 6px;
+  line-height: 1.35;
+}
+
+.provider-option em {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  max-width: 100px;
+  color: var(--blue);
+  font-size: 6px;
+  line-height: 1.35;
+  text-align: right;
 }
 
 .api-key-field > label {
@@ -1515,6 +1605,10 @@ dialog[open] {
   font-family: var(--mono);
   font-size: 7px;
   line-height: 1.5;
+}
+
+.api-key-privacy b {
+  color: var(--ink);
 }
 
 .api-key-status {
@@ -1580,6 +1674,19 @@ dialog[open] {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+}
+
+.appeal-status {
+  min-height: 14px;
+  margin: 9px 0 0;
+  color: var(--muted);
+  font: 500 7px/1.5 var(--mono);
+}
+
+.appeal-status.is-error {
+  color: var(--ink);
+  background: var(--pink);
+  padding: 7px 9px;
 }
 
 .court-button {
@@ -2217,7 +2324,16 @@ footer p {
   }
 
   .api-key-controls {
-    flex-direction: column-reverse;
+    flex-direction: column;
+  }
+
+  .provider-option > span {
+    min-height: 62px;
+    padding: 9px;
+  }
+
+  .provider-option em {
+    max-width: 78px;
   }
 
   .api-key-input-row input {
@@ -2333,6 +2449,21 @@ footer p {
 
   .certificate-details {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 380px) {
+  .provider-options {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-option > span {
+    min-height: 54px;
+  }
+
+  .provider-option small,
+  .provider-option em {
+    font-size: 7px;
   }
 }
 

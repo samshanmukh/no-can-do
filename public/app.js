@@ -39,7 +39,40 @@ const MYSTERY_VERDICT = {
 };
 
 const HISTORY_KEY = "no-can-do-hall-v1";
-const OPENROUTER_KEY_PATTERN = /^sk-or-v1-[A-Za-z0-9._~+/-]+=*$/;
+const PROVIDER_PROFILES = Object.freeze({
+  openrouter: {
+    label: "OpenRouter",
+    product: "OPENROUTER",
+    defaultModel: "google/gemini-3.1-flash-lite",
+    keyPattern: /^sk-or-v1-[A-Za-z0-9._~+/-]+=*$/,
+    placeholder: "sk-or-v1-…",
+    keyUrl: "https://openrouter.ai/settings/keys",
+  },
+  openai: {
+    label: "OpenAI",
+    product: "OPENAI",
+    defaultModel: "gpt-5.6-luna",
+    keyPattern: /^sk-(?!or-v1-|ant-)[A-Za-z0-9._~+/-]+=*$/,
+    placeholder: "sk-proj-…",
+    keyUrl: "https://platform.openai.com/api-keys",
+  },
+  xai: {
+    label: "xAI",
+    product: "GROK",
+    defaultModel: "grok-4.3",
+    keyPattern: /^xai-[A-Za-z0-9._~+/-]+=*$/,
+    placeholder: "xai-…",
+    keyUrl: "https://console.x.ai/",
+  },
+  anthropic: {
+    label: "Anthropic",
+    product: "CLAUDE",
+    defaultModel: "claude-haiku-4-5-20251001",
+    keyPattern: /^sk-ant-[A-Za-z0-9._~+/-]+=*$/,
+    placeholder: "sk-ant-api03-…",
+    keyUrl: "https://console.anthropic.com/settings/keys",
+  },
+});
 const CONFETTI_COLORS = ["#c9ff4a", "#ff8db4", "#ff7048", "#4355e8", "#fffdf7"];
 
 const DEMO_EVIDENCE = {
@@ -99,14 +132,19 @@ const elements = {
   apiKeyClear: $("#api-key-clear"),
   apiKeyForm: $("#api-key-form"),
   apiKeyInput: $("#api-key-input"),
+  apiKeyInputLabel: $("#api-key-input-label"),
+  apiKeyLink: $("#api-key-link"),
   apiKeyModal: $("#api-key-modal"),
+  apiKeyProviderName: $("#api-key-provider-name"),
   apiKeyReveal: $("#api-key-reveal"),
   apiKeyStatus: $("#api-key-status"),
+  apiProviderInputs: $$("input[name='ai-provider']"),
   appealButton: $("#appeal-button"),
   appealCase: $("#appeal-case"),
   appealInput: $("#appeal-input"),
   appealMic: $("#appeal-mic"),
   appealModal: $("#appeal-modal"),
+  appealStatus: $("#appeal-status"),
   appealSubmit: $("#appeal-submit"),
   binjamin: $("#binjamin"),
   camera: $("#camera"),
@@ -194,7 +232,10 @@ let serialWriteQueue = Promise.resolve();
 const serialWaiters = [];
 let apiKeyReturnFocus;
 let serverAiConfigured = false;
-let sessionOpenRouterKey = "";
+let serverAiModel = "google/gemini-3.1-flash-lite";
+let serverAiProvider = "openrouter";
+let selectedAiProvider = "openrouter";
+let sessionAiCredential = null;
 let speechTimer;
 let soundEnabled = true;
 let toastTimer;
@@ -217,7 +258,10 @@ function showDialog(dialog) {
 
 function buildAiHeaders() {
   const headers = { "Content-Type": "application/json" };
-  if (sessionOpenRouterKey) headers.Authorization = `Bearer ${sessionOpenRouterKey}`;
+  if (sessionAiCredential) {
+    headers.Authorization = `Bearer ${sessionAiCredential.apiKey}`;
+    headers["X-NCD-AI-Provider"] = sessionAiCredential.provider;
+  }
   return headers;
 }
 
@@ -225,6 +269,7 @@ function setApiKeyStatus(message, state = "") {
   elements.apiKeyStatus.textContent = message;
   elements.apiKeyStatus.classList.toggle("is-ready", state === "ready");
   elements.apiKeyStatus.classList.toggle("is-error", state === "error");
+  elements.apiKeyInput.setAttribute("aria-invalid", String(state === "error"));
 }
 
 function resetApiKeyReveal() {
@@ -234,46 +279,81 @@ function resetApiKeyReveal() {
   elements.apiKeyReveal.setAttribute("aria-pressed", "false");
 }
 
+function providerProfile(provider = selectedAiProvider) {
+  return PROVIDER_PROFILES[provider] || PROVIDER_PROFILES.openrouter;
+}
+
+function selectAiProvider(provider, { selectionChanged = false } = {}) {
+  if (!PROVIDER_PROFILES[provider]) return;
+  selectedAiProvider = provider;
+  const profile = providerProfile();
+  elements.apiProviderInputs.forEach((input) => {
+    input.checked = input.value === provider;
+  });
+  elements.apiKeyInput.value = "";
+  elements.apiKeyInput.placeholder = profile.placeholder;
+  elements.apiKeyInputLabel.textContent = `${profile.product} API KEY`;
+  elements.apiKeyProviderName.textContent = profile.product;
+  elements.apiKeyLink.href = profile.keyUrl;
+  elements.apiKeyLink.textContent = `CREATE ${profile.product} KEY ↗`;
+  resetApiKeyReveal();
+  if (selectionChanged) {
+    if (sessionAiCredential && sessionAiCredential.provider !== provider) {
+      const loadedProfile = providerProfile(sessionAiCredential.provider);
+      setApiKeyStatus(`${loadedProfile.product} KEY REMAINS LOADED · SAVE TO REPLACE`, "ready");
+    } else if (sessionAiCredential) {
+      setApiKeyStatus(`${profile.product} SESSION KEY LOADED · PASTE TO REPLACE`, "ready");
+    } else {
+      setApiKeyStatus(`READY FOR ${profile.product} KEY`);
+    }
+  }
+}
+
 function renderAiAvailability() {
-  aiConfigured = serverAiConfigured || Boolean(sessionOpenRouterKey);
+  aiConfigured = serverAiConfigured || Boolean(sessionAiCredential);
+  const activeProvider = sessionAiCredential?.provider || serverAiProvider;
+  const activeProfile = providerProfile(activeProvider);
+  aiModel = sessionAiCredential ? activeProfile.defaultModel : serverAiModel;
   elements.apiDot.classList.toggle("is-live", aiConfigured);
-  elements.apiKeyButton.classList.toggle("is-loaded", Boolean(sessionOpenRouterKey));
-  elements.apiKeyButtonLabel.textContent = sessionOpenRouterKey ? "KEY LOADED" : "ADD KEY";
+  elements.apiKeyButton.classList.toggle("is-loaded", Boolean(sessionAiCredential));
+  elements.apiKeyButtonLabel.textContent = sessionAiCredential ? `${activeProfile.product} KEY` : "ADD KEY";
   elements.apiKeyButton.setAttribute(
     "aria-label",
-    sessionOpenRouterKey
-      ? "Open OpenRouter API key settings; a temporary key is loaded"
-      : "Open OpenRouter API key settings",
+    sessionAiCredential
+      ? `Open AI provider settings; a temporary ${activeProfile.label} key is loaded`
+      : "Open AI provider and API key settings",
   );
-  elements.apiLabel.textContent = sessionOpenRouterKey
-    ? "OPENROUTER · TAB READY"
+  elements.apiLabel.textContent = sessionAiCredential
+    ? `${activeProfile.product} · TAB READY`
     : serverAiConfigured
-      ? "OPENROUTER · HOST READY"
+      ? `${activeProfile.product} · HOST READY`
       : "SCRIPTED READY · LIVE AI OFFLINE";
   const preserveValidationError = elements.apiKeyModal.open
     && elements.apiKeyStatus.classList.contains("is-error");
   if (!preserveValidationError) {
     setApiKeyStatus(
-      sessionOpenRouterKey
-        ? "SESSION KEY LOADED · VALIDATED ON FIRST JUDGMENT"
+      sessionAiCredential
+        ? `${activeProfile.product} SESSION KEY LOADED · VALIDATED ON FIRST JUDGMENT`
         : serverAiConfigured
-          ? "HOST KEY READY · SESSION KEY OPTIONAL"
+          ? `${activeProfile.product} HOST KEY READY · SESSION KEY OPTIONAL`
           : "NO SESSION KEY LOADED",
-      sessionOpenRouterKey || serverAiConfigured ? "ready" : "",
+      sessionAiCredential || serverAiConfigured ? "ready" : "",
     );
   }
   updateLiveAvailability();
 }
 
-function openApiKeySettings({ message = "", state = "" } = {}) {
+function openApiKeySettings({ message = "", state = "", provider = "" } = {}) {
   apiKeyReturnFocus = document.activeElement instanceof HTMLElement
     ? document.activeElement
     : elements.apiKeyButton;
-  elements.apiKeyInput.value = "";
-  resetApiKeyReveal();
+  selectAiProvider(provider || sessionAiCredential?.provider || serverAiProvider || "openrouter");
   if (message) setApiKeyStatus(message, state);
-  else if (sessionOpenRouterKey) setApiKeyStatus("SESSION KEY LOADED · REFRESH TO FORGET", "ready");
-  else if (serverAiConfigured) setApiKeyStatus("HOST KEY READY · SESSION KEY OPTIONAL", "ready");
+  else if (sessionAiCredential) {
+    setApiKeyStatus(`${providerProfile(sessionAiCredential.provider).product} SESSION KEY LOADED · REFRESH TO FORGET`, "ready");
+  } else if (serverAiConfigured) {
+    setApiKeyStatus(`${providerProfile(serverAiProvider).product} HOST KEY READY · SESSION KEY OPTIONAL`, "ready");
+  }
   else setApiKeyStatus("NO SESSION KEY LOADED");
   showDialog(elements.apiKeyModal);
   setTimeout(() => elements.apiKeyInput.focus(), 80);
@@ -285,14 +365,14 @@ function recoverLiveControls() {
   elements.judgeButton.disabled = false;
 }
 
-function clearSessionOpenRouterKey({ announce = true } = {}) {
+function clearSessionAiCredential({ announce = true } = {}) {
   if (activeLiveController) {
     activeLiveController.abort();
     activeLiveController = undefined;
     runGeneration += 1;
     recoverLiveControls();
   }
-  sessionOpenRouterKey = "";
+  sessionAiCredential = null;
   elements.apiKeyInput.value = "";
   resetApiKeyReveal();
   if (!serverAiConfigured) currentMode = "demo";
@@ -305,15 +385,17 @@ function clearSessionOpenRouterKey({ announce = true } = {}) {
   }
 }
 
-function saveSessionOpenRouterKey(event) {
+function saveSessionAiCredential(event) {
   event.preventDefault();
   const candidate = elements.apiKeyInput.value.trim();
-  if (candidate.length < 20 || candidate.length > 512 || !OPENROUTER_KEY_PATTERN.test(candidate)) {
-    setApiKeyStatus("THAT DOESN'T LOOK LIKE AN OPENROUTER KEY", "error");
+  const profile = providerProfile();
+  if (candidate.length < 20 || candidate.length > 512 || !profile.keyPattern.test(candidate)) {
+    setApiKeyStatus(`${profile.product} KEY FORMAT NOT RECOGNIZED`, "error");
     elements.apiKeyInput.focus();
     return;
   }
-  sessionOpenRouterKey = candidate;
+  sessionAiCredential = { provider: selectedAiProvider, apiKey: candidate };
+  aiModel = profile.defaultModel;
   elements.apiKeyInput.value = "";
   resetApiKeyReveal();
   renderAiAvailability();
@@ -333,18 +415,18 @@ function toggleApiKeyReveal() {
 
 function handleSessionCredentialError(error, { openDialog = true } = {}) {
   const status = Number(error?.status);
-  if (!sessionOpenRouterKey || ![401, 402, 403].includes(status)) return false;
+  if (!sessionAiCredential || ![401, 402, 403].includes(status)) return false;
+  const failedProvider = sessionAiCredential.provider;
+  const profile = providerProfile(failedProvider);
   const messages = {
-    401: "OPENROUTER REJECTED THAT KEY · PLEASE REPLACE IT",
-    402: "THAT KEY NEEDS OPENROUTER CREDITS",
-    403: "THAT KEY CANNOT ACCESS THIS MODEL",
+    401: `${profile.product} REJECTED THAT KEY · PLEASE REPLACE IT`,
+    402: `THAT ${profile.product} KEY NEEDS CREDITS`,
+    403: `THAT ${profile.product} KEY CANNOT USE THIS MODEL`,
   };
-  if (status === 401) {
-    sessionOpenRouterKey = "";
-    if (!serverAiConfigured) currentMode = "demo";
-    renderAiAvailability();
-  }
-  if (openDialog) openApiKeySettings({ message: messages[status], state: "error" });
+  sessionAiCredential = null;
+  if (!serverAiConfigured) currentMode = "demo";
+  renderAiAvailability();
+  if (openDialog) openApiKeySettings({ message: messages[status], state: "error", provider: failedProvider });
   else setApiKeyStatus(messages[status], "error");
   showToast(messages[status].replaceAll(" · ", ". "), 4400);
   return true;
@@ -525,6 +607,8 @@ function openAppeal() {
   if (!currentVerdict) return;
   elements.appealCase.textContent = currentVerdict.caseNumber;
   elements.appealInput.value = currentVerdict.appealText || "This is literally trash.";
+  elements.appealStatus.textContent = "";
+  elements.appealStatus.classList.remove("is-error");
   elements.appealSubmit.disabled = false;
   elements.appealSubmit.textContent = "FILE THIS BAD DECISION ↗";
   elements.courtRuling.hidden = !currentVerdict.appealRuling;
@@ -538,6 +622,8 @@ async function submitAppeal() {
   const appeal = elements.appealInput.value.trim() || "This is literally trash.";
   elements.appealSubmit.disabled = true;
   elements.appealSubmit.textContent = "CONSULTING PRECEDENT…";
+  elements.appealStatus.textContent = "CONTACTING THE LIVE COURT…";
+  elements.appealStatus.classList.remove("is-error");
   const startedAt = performance.now();
   let ruling;
 
@@ -558,11 +644,17 @@ async function submitAppeal() {
         throw error;
       }
       ruling = payload;
+      elements.appealStatus.textContent = "LIVE PRECEDENT RECEIVED";
     } catch (error) {
       const credentialFailure = handleSessionCredentialError(error, { openDialog: false });
+      const reason = error?.name === "AbortError"
+        ? "LIVE COURT TIMED OUT"
+        : String(error?.message || "LIVE COURT UNAVAILABLE").slice(0, 120).toUpperCase();
+      elements.appealStatus.textContent = `${reason} · LOCAL PRECEDENT APPLIED`;
+      elements.appealStatus.classList.add("is-error");
       if (!credentialFailure) {
         console.warn(error);
-        showToast("Court Wi-Fi recused itself. Binding local precedent applied.", 3200);
+        showToast(`${reason}. Local precedent applied.`, 4200);
       }
       ruling = localAppeal(currentVerdict);
     } finally {
@@ -570,6 +662,7 @@ async function submitAppeal() {
     }
   } else {
     ruling = localAppeal(currentVerdict);
+    elements.appealStatus.textContent = "LOCAL PRECEDENT · LIVE AI NOT REQUESTED";
   }
 
   ruling = normalizeRuling(ruling);
@@ -636,7 +729,7 @@ function setMode(mode) {
     currentMode = "demo";
     updateLiveAvailability();
     openApiKeySettings();
-    showToast("Live AI needs a temporary OpenRouter key. Scripted chaos remains operational.", 5200);
+    showToast("Live AI needs a temporary provider key. Scripted chaos remains operational.", 5200);
     return false;
   }
 
@@ -658,7 +751,7 @@ function updateLiveAvailability() {
   elements.liveModeButton.textContent = aiConfigured ? "LIVE AI" : "LIVE AI · OFFLINE";
   elements.liveModeButton.title = aiConfigured
     ? `Judge an object with live AI vision (${aiModel})`
-    : "Add a temporary OpenRouter key here or configure OPENROUTER_API_KEY in Vercel";
+    : "Choose OpenRouter, OpenAI, Grok, or Claude and add a temporary key";
   elements.liveWildcard.classList.toggle("is-unavailable", !aiConfigured);
   elements.liveWildcard.title = elements.liveModeButton.title;
   $$(".mode-button").forEach((button) => {
@@ -671,9 +764,11 @@ async function checkSystemStatus() {
     const response = await fetch("/api/status");
     const status = await response.json();
     serverAiConfigured = Boolean(status.aiConfigured);
-    aiModel = String(status.model || aiModel);
+    serverAiProvider = PROVIDER_PROFILES[status.provider] ? status.provider : "openrouter";
+    serverAiModel = String(status.model || providerProfile(serverAiProvider).defaultModel);
   } catch {
     serverAiConfigured = false;
+    serverAiModel = providerProfile(serverAiProvider).defaultModel;
   }
   renderAiAvailability();
 
@@ -1030,10 +1125,17 @@ async function runLiveJudgment() {
       return;
     }
     console.warn(error);
-    const fallback = elements.hint.value.toLowerCase().includes("phone")
+    const fallbackBase = elements.hint.value.toLowerCase().includes("phone")
       ? DEMO_VERDICTS.iphone
       : MYSTERY_VERDICT;
-    showToast("Cloud confidence collapsed. Local audacity has taken over.", 3400);
+    const reason = error?.name === "AbortError"
+      ? "Live AI timed out."
+      : String(error?.message || "Live judgment unavailable.").slice(0, 140);
+    const fallback = {
+      ...fallbackBase,
+      footnote: `LOCAL FALLBACK · ${fallbackBase.footnote}`,
+    };
+    showToast(`${reason} Local fallback applied.`, 4400);
     await delay(450);
     if (runId !== runGeneration) return;
     await presentVerdict(fallback);
@@ -1369,9 +1471,12 @@ elements.cameraButton.addEventListener("click", startCamera);
 elements.fileInput.addEventListener("change", (event) => handleUpload(event.target.files?.[0]));
 elements.judgeButton.addEventListener("click", handleJudgeClick);
 elements.apiKeyButton.addEventListener("click", () => openApiKeySettings());
-elements.apiKeyForm.addEventListener("submit", saveSessionOpenRouterKey);
+elements.apiKeyForm.addEventListener("submit", saveSessionAiCredential);
 elements.apiKeyReveal.addEventListener("click", toggleApiKeyReveal);
-elements.apiKeyClear.addEventListener("click", () => clearSessionOpenRouterKey());
+elements.apiKeyClear.addEventListener("click", () => clearSessionAiCredential());
+elements.apiProviderInputs.forEach((input) => {
+  input.addEventListener("change", () => selectAiProvider(input.value, { selectionChanged: true }));
+});
 elements.apiKeyInput.addEventListener("input", () => {
   if (elements.apiKeyStatus.classList.contains("is-error")) {
     setApiKeyStatus("READY TO INSPECT A NEW KEY");
@@ -1424,12 +1529,12 @@ $$('[data-close-dialog]').forEach((button) => {
 document.addEventListener("keydown", handleKeyboard);
 if ("serial" in navigator) navigator.serial.addEventListener("disconnect", handleSerialDisconnect);
 window.addEventListener("beforeunload", () => {
-  sessionOpenRouterKey = "";
+  sessionAiCredential = null;
   elements.apiKeyInput.value = "";
   cameraStream?.getTracks().forEach((track) => track.stop());
 });
 window.addEventListener("pagehide", () => {
-  sessionOpenRouterKey = "";
+  sessionAiCredential = null;
   elements.apiKeyInput.value = "";
 });
 window.addEventListener("pageshow", (event) => {
@@ -1437,6 +1542,7 @@ window.addEventListener("pageshow", (event) => {
   if (!serverAiConfigured) currentMode = "demo";
   elements.apiKeyStatus.classList.remove("is-error");
   resetApiKeyReveal();
+  if (elements.apiKeyModal.open) selectAiProvider(serverAiProvider || "openrouter");
   renderAiAvailability();
 });
 

@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { after, before, describe, it } from "node:test";
+import { AI_PROVIDERS } from "../lib/ai-providers.mjs";
 import {
   createServer,
   extractOutputText,
+  getPublicAiStatus,
   judgeObject,
+  parseClientAiCredential,
   parseClientOpenRouterKey,
   parseAppealResponse,
   parseVerdictResponse,
@@ -13,37 +17,124 @@ import { GET as getVercelHealth } from "../api/health.mjs";
 import { POST as postVercelJudge } from "../api/judge.mjs";
 import { GET as getVercelStatus } from "../api/status.mjs";
 
-const TEST_CLIENT_KEY = `sk-or-v1-${"a".repeat(32)}`;
+const TEST_KEYS = Object.freeze({
+  openrouter: `sk-or-v1-${"a".repeat(32)}`,
+  openai: `sk-proj-${"b".repeat(32)}`,
+  xai: `xai-${"c".repeat(32)}`,
+  anthropic: `sk-ant-api03-${"d".repeat(32)}`,
+});
+const TEST_CLIENT_KEY = TEST_KEYS.openrouter;
+const NO_HOST_AI_ENV = Object.freeze({
+  ALLOW_HOST_AI: undefined,
+  AI_PROVIDER: undefined,
+  OPENROUTER_API_KEY: undefined,
+  OPENAI_API_KEY: undefined,
+  XAI_API_KEY: undefined,
+  ANTHROPIC_API_KEY: undefined,
+});
 
-describe("browser OpenRouter credential parsing", () => {
-  it("accepts a single well-formed Bearer credential and treats absence as host fallback", () => {
+async function withEnvironment(changes, operation) {
+  const previous = Object.fromEntries(
+    Object.keys(changes).map((key) => [key, process.env[key]]),
+  );
+  try {
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    return await operation();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+describe("browser AI credential parsing", () => {
+  it("accepts each supported provider and treats absence as host fallback", () => {
+    assert.equal(parseClientAiCredential(), null);
+    for (const [provider, apiKey] of Object.entries(TEST_KEYS)) {
+      assert.deepEqual(
+        parseClientAiCredential({ authorization: `bEaReR ${apiKey}`, provider }),
+        { provider, apiKey },
+      );
+    }
+  });
+
+  it("reports safe host readiness without exposing credentials", () => {
+    const status = getPublicAiStatus({
+      ALLOW_HOST_AI: "true",
+      AI_PROVIDER: "openai",
+      OPENAI_API_KEY: "host-secret-openai",
+      OPENAI_MODEL: "host-openai-model",
+      ANTHROPIC_API_KEY: "host-secret-anthropic",
+    });
+    assert.equal(status.aiConfigured, true);
+    assert.equal(status.provider, "openai");
+    assert.equal(status.model, "host-openai-model");
+    assert.equal(status.configurationValid, true);
+    assert.doesNotMatch(JSON.stringify(status), /host-secret/);
+  });
+
+  it("keeps host funding off by default and fails closed on an unknown provider", () => {
+    assert.deepEqual(
+      getPublicAiStatus({ OPENROUTER_API_KEY: "host-secret-openrouter" }),
+      {
+        aiConfigured: false,
+        provider: "openrouter",
+        model: AI_PROVIDERS.openrouter.defaultModel,
+        configurationValid: true,
+        offlineReady: true,
+      },
+    );
+    const invalid = getPublicAiStatus({
+      ALLOW_HOST_AI: "true",
+      AI_PROVIDER: "anthorpic",
+      OPENROUTER_API_KEY: "host-secret-openrouter",
+      ANTHROPIC_API_KEY: "host-secret-anthropic",
+    });
+    assert.equal(invalid.aiConfigured, false);
+    assert.equal(invalid.configurationValid, false);
+    assert.equal(invalid.provider, "openrouter");
+  });
+
+  it("keeps provider-less OpenRouter credentials compatible for already-open tabs", () => {
     assert.equal(parseClientOpenRouterKey(undefined), "");
     assert.equal(parseClientOpenRouterKey(""), "");
     assert.equal(parseClientOpenRouterKey(`bEaReR ${TEST_CLIENT_KEY}`), TEST_CLIENT_KEY);
   });
 
-  it("rejects ambiguous or malformed credentials without echoing them", () => {
+  it("rejects ambiguous, mismatched, or unsupported credentials without echoing them", () => {
     const malformed = [
-      TEST_CLIENT_KEY,
-      `Basic ${TEST_CLIENT_KEY}`,
-      `Bearer  ${TEST_CLIENT_KEY}`,
-      `Bearer ${TEST_CLIENT_KEY},Bearer ${TEST_CLIENT_KEY}`,
-      "Bearer sk-or-v1-short",
-      `Bearer sk-or-v1-${"a".repeat(504)}`,
-      [TEST_CLIENT_KEY],
+      { authorization: TEST_CLIENT_KEY, provider: "openrouter" },
+      { authorization: `Basic ${TEST_CLIENT_KEY}`, provider: "openrouter" },
+      { authorization: `Bearer  ${TEST_CLIENT_KEY}`, provider: "openrouter" },
+      { authorization: `Bearer ${TEST_CLIENT_KEY},Bearer ${TEST_CLIENT_KEY}`, provider: "openrouter" },
+      { authorization: "Bearer sk-or-v1-short", provider: "openrouter" },
+      { authorization: `Bearer sk-or-v1-${"a".repeat(504)}`, provider: "openrouter" },
+      { authorization: [TEST_CLIENT_KEY], provider: "openrouter" },
+      { authorization: `Bearer ${TEST_KEYS.openai}`, provider: "anthropic" },
     ];
     for (const value of malformed) {
       assert.throws(
-        () => parseClientOpenRouterKey(value),
+        () => parseClientAiCredential(value),
         (error) => error.statusCode === 401
-          && /authorization was invalid/i.test(error.message)
           && !error.message.includes(TEST_CLIENT_KEY),
       );
     }
+    assert.throws(
+      () => parseClientAiCredential({ authorization: `Bearer ${TEST_CLIENT_KEY}`, provider: "evil" }),
+      (error) => error.statusCode === 400 && /not supported/i.test(error.message),
+    );
+    assert.throws(
+      () => parseClientAiCredential({ provider: "openai" }),
+      (error) => error.statusCode === 401,
+    );
   });
 });
 
-describe("OpenRouter response parsing", () => {
+describe("provider response parsing", () => {
   const verdict = {
     object_name: "CUP",
     reframe_name: "TINY VESSEL",
@@ -60,6 +151,18 @@ describe("OpenRouter response parsing", () => {
 
   it("extracts output text from an OpenRouter chat completion", () => {
     assert.equal(extractOutputText(response), JSON.stringify(verdict));
+  });
+
+  it("extracts output text from Responses API and Anthropic payloads", () => {
+    const json = JSON.stringify(verdict);
+    assert.equal(extractOutputText({
+      status: "completed",
+      output: [{ type: "message", content: [{ type: "output_text", text: json }] }],
+    }), json);
+    assert.equal(extractOutputText({
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: json }],
+    }), json);
   });
 
   it("parses a complete structured verdict", () => {
@@ -88,10 +191,16 @@ describe("OpenRouter response parsing", () => {
     const payload = { choices: [{ message: { content: JSON.stringify(ruling) } }] };
     assert.deepEqual(parseAppealResponse(payload), ruling);
   });
+
+  it("canonicalizes provider enum capitalization before local validation", () => {
+    const mixedCase = structuredClone(response);
+    mixedCase.choices[0].message.content = JSON.stringify({ ...verdict, verdict: "REFUSE" });
+    assert.equal(parseVerdictResponse(mixedCase).verdict, "refuse");
+  });
 });
 
 describe("OpenRouter request contract", () => {
-  it("prefers a request-scoped key and sends a private, schema-bound multimodal request", async () => {
+  it("prefers a request-scoped key, ignores host model overrides, and sends a private schema-bound request", async () => {
     const previousKey = process.env.OPENROUTER_API_KEY;
     const previousModel = process.env.OPENROUTER_MODEL;
     const originalFetch = globalThis.fetch;
@@ -127,7 +236,7 @@ describe("OpenRouter request contract", () => {
       assert.equal(capturedUrl, "https://openrouter.ai/api/v1/chat/completions");
       assert.equal(capturedInit.headers.Authorization, `Bearer ${TEST_CLIENT_KEY}`);
       assert.equal(capturedInit.headers["X-OpenRouter-Title"], "NO CAN DO");
-      assert.equal(body.model, "test/vision-model");
+      assert.equal(body.model, AI_PROVIDERS.openrouter.defaultModel);
       assert.deepEqual(body.provider, {
         require_parameters: true,
         zdr: true,
@@ -139,7 +248,11 @@ describe("OpenRouter request contract", () => {
       assert.equal(body.messages[1].content[0].type, "text");
       assert.equal(body.messages[1].content[1].type, "image_url");
       assert.equal(body.messages[1].content[1].image_url.url, "data:image/jpeg;base64,AA==");
-      assert.deepEqual(result, { ...verdict, model: "test/vision-model" });
+      assert.deepEqual(result, {
+        ...verdict,
+        model: AI_PROVIDERS.openrouter.defaultModel,
+        provider: "openrouter",
+      });
     } finally {
       globalThis.fetch = originalFetch;
       if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
@@ -150,13 +263,19 @@ describe("OpenRouter request contract", () => {
   });
 
   it("uses the host key when no request-scoped key is supplied", async () => {
+    const previousAllowHostAi = process.env.ALLOW_HOST_AI;
     const previousKey = process.env.OPENROUTER_API_KEY;
+    const previousModel = process.env.OPENROUTER_MODEL;
     const originalFetch = globalThis.fetch;
     let authorization;
+    let model;
     try {
+      process.env.ALLOW_HOST_AI = "true";
       process.env.OPENROUTER_API_KEY = "test-host-openrouter-key";
+      process.env.OPENROUTER_MODEL = "test/host-vision-model";
       globalThis.fetch = async (_url, init) => {
         authorization = init.headers.Authorization;
+        model = JSON.parse(init.body).model;
         return new Response(JSON.stringify({
           choices: [{ message: { content: JSON.stringify({
             object_name: "CUP",
@@ -171,10 +290,50 @@ describe("OpenRouter request contract", () => {
       };
       await judgeObject({ image: "data:image/jpeg;base64,AA==" });
       assert.equal(authorization, "Bearer test-host-openrouter-key");
+      assert.equal(model, "test/host-vision-model");
     } finally {
       globalThis.fetch = originalFetch;
+      if (previousAllowHostAi === undefined) delete process.env.ALLOW_HOST_AI;
+      else process.env.ALLOW_HOST_AI = previousAllowHostAi;
       if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
       else process.env.OPENROUTER_API_KEY = previousKey;
+      if (previousModel === undefined) delete process.env.OPENROUTER_MODEL;
+      else process.env.OPENROUTER_MODEL = previousModel;
+    }
+  });
+
+  it("does not spend a configured host key without explicit host funding", async () => {
+    const originalFetch = globalThis.fetch;
+    let upstreamCalls = 0;
+    try {
+      await withEnvironment({
+        ...NO_HOST_AI_ENV,
+        OPENROUTER_API_KEY: "test-host-openrouter-key",
+      }, async () => {
+        globalThis.fetch = async () => {
+          upstreamCalls += 1;
+          throw new Error("Host key must remain unused.");
+        };
+        await assert.rejects(
+          judgeObject({ image: "data:image/jpeg;base64,AA==" }),
+          (error) => error.statusCode === 503 && /not configured/i.test(error.message),
+        );
+      });
+      await withEnvironment({
+        ...NO_HOST_AI_ENV,
+        ALLOW_HOST_AI: "true",
+        AI_PROVIDER: "anthorpic",
+        OPENROUTER_API_KEY: "test-host-openrouter-key",
+        ANTHROPIC_API_KEY: "test-host-anthropic-key",
+      }, async () => {
+        await assert.rejects(
+          judgeObject({ image: "data:image/jpeg;base64,AA==" }),
+          (error) => error.statusCode === 503 && /not supported/i.test(error.message),
+        );
+      });
+      assert.equal(upstreamCalls, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 
@@ -184,7 +343,7 @@ describe("OpenRouter request contract", () => {
       for (const [status, message] of [
         [401, /rejected that API key/i],
         [402, /needs credits/i],
-        [403, /cannot access this model/i],
+        [403, /cannot use this model/i],
       ]) {
         globalThis.fetch = async () => new Response(JSON.stringify({ error: { code: "test" } }), {
           status,
@@ -204,6 +363,192 @@ describe("OpenRouter request contract", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe("direct provider request contracts", () => {
+  const verdict = {
+    object_name: "CUP",
+    reframe_name: "TINY VESSEL",
+    headline: "STILL TRYING",
+    monologue: "Empty is just full of opportunity.",
+    verdict: "refuse",
+    potential: 91,
+    footnote: "Hydration pending.",
+  };
+
+  for (const config of [
+    {
+      provider: "openai",
+      envModel: "OPENAI_MODEL",
+      defaultModel: AI_PROVIDERS.openai.defaultModel,
+      endpoint: "https://api.openai.com/v1/responses",
+    },
+    {
+      provider: "xai",
+      envModel: "XAI_MODEL",
+      defaultModel: AI_PROVIDERS.xai.defaultModel,
+      endpoint: "https://api.x.ai/v1/responses",
+    },
+  ]) {
+    it(`sends the ${config.provider} Responses API contract without host model steering`, async () => {
+      const originalFetch = globalThis.fetch;
+      let capturedUrl;
+      let capturedInit;
+      try {
+        await withEnvironment({ [config.envModel]: "host-only-expensive-model" }, async () => {
+          globalThis.fetch = async (url, init) => {
+            capturedUrl = url;
+            capturedInit = init;
+            return new Response(JSON.stringify({
+              status: "completed",
+              output: [{ content: [{ type: "output_text", text: JSON.stringify(verdict) }] }],
+            }), { status: 200, headers: { "Content-Type": "application/json" } });
+          };
+          const result = await judgeObject(
+            { image: "data:image/jpeg;base64,AA==", hint: "coffee cup" },
+            undefined,
+            { clientCredential: { provider: config.provider, apiKey: TEST_KEYS[config.provider] } },
+          );
+          const body = JSON.parse(capturedInit.body);
+          assert.equal(capturedUrl, config.endpoint);
+          assert.equal(capturedInit.headers.Authorization, `Bearer ${TEST_KEYS[config.provider]}`);
+          assert.equal(body.model, config.defaultModel);
+          assert.equal(body.store, false);
+          assert.deepEqual(body.reasoning, { effort: "none" });
+          assert.equal(body.input[0].role, "system");
+          assert.equal(body.input[1].content[0].type, "input_image");
+          assert.equal(body.input[1].content[0].image_url, "data:image/jpeg;base64,AA==");
+          assert.equal(body.input[1].content[0].detail, "low");
+          assert.equal(body.input[1].content[1].type, "input_text");
+          assert.equal(body.text.format.type, "json_schema");
+          assert.equal(body.text.format.strict, true);
+          assert.deepEqual(result, {
+            ...verdict,
+            model: config.defaultModel,
+            provider: config.provider,
+          });
+        });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  }
+
+  it("sends Anthropic's native image, auth, and structured-output contract", async () => {
+    const originalFetch = globalThis.fetch;
+    let capturedUrl;
+    let capturedInit;
+    try {
+      await withEnvironment({ ANTHROPIC_MODEL: "host-only-expensive-model" }, async () => {
+        globalThis.fetch = async (url, init) => {
+          capturedUrl = url;
+          capturedInit = init;
+          return new Response(JSON.stringify({
+            stop_reason: "end_turn",
+            content: [{ type: "text", text: JSON.stringify({ ...verdict, verdict: "REFUSE" }) }],
+          }), { status: 200, headers: { "Content-Type": "application/json" } });
+        };
+        const result = await judgeObject(
+          { image: "data:image/jpg;base64,AA==", hint: "coffee cup" },
+          undefined,
+          { clientCredential: { provider: "anthropic", apiKey: TEST_KEYS.anthropic } },
+        );
+        const body = JSON.parse(capturedInit.body);
+        assert.equal(capturedUrl, "https://api.anthropic.com/v1/messages");
+        assert.equal(capturedInit.headers["x-api-key"], TEST_KEYS.anthropic);
+        assert.equal(capturedInit.headers.Authorization, undefined);
+        assert.equal(capturedInit.headers["anthropic-version"], "2023-06-01");
+        assert.equal(body.model, AI_PROVIDERS.anthropic.defaultModel);
+        assert.equal(body.system.includes("emotionally supportive trash can"), true);
+        assert.equal(body.messages[0].content[0].type, "image");
+        assert.equal(body.messages[0].content[0].source.media_type, "image/jpeg");
+        assert.equal(body.messages[0].content[0].source.data, "AA==");
+        assert.equal(body.messages[0].content[1].type, "text");
+        assert.equal(body.output_config.format.type, "json_schema");
+        assert.equal(body.output_config.format.schema.properties.potential.minimum, undefined);
+        assert.equal(body.output_config.format.schema.properties.potential.maximum, undefined);
+        assert.deepEqual(result, {
+          ...verdict,
+          model: AI_PROVIDERS.anthropic.defaultModel,
+          provider: "anthropic",
+        });
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("rejects incomplete Responses and Anthropic outputs before local parsing", async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => new Response(JSON.stringify({ status: "incomplete", output: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+      await assert.rejects(
+        judgeObject(
+          { image: "data:image/jpeg;base64,AA==" },
+          undefined,
+          { clientCredential: { provider: "openai", apiKey: TEST_KEYS.openai } },
+        ),
+        (error) => error.statusCode === 502 && /did not complete/i.test(error.message),
+      );
+
+      for (const stopReason of ["max_tokens", "refusal"]) {
+        globalThis.fetch = async () => new Response(JSON.stringify({ stop_reason: stopReason, content: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+        await assert.rejects(
+          judgeObject(
+            { image: "data:image/jpeg;base64,AA==" },
+            undefined,
+            { clientCredential: { provider: "anthropic", apiKey: TEST_KEYS.anthropic } },
+          ),
+          (error) => error.statusCode === 502 && /did not complete/i.test(error.message),
+        );
+      }
+
+      let webpUpstreamCalls = 0;
+      globalThis.fetch = async () => {
+        webpUpstreamCalls += 1;
+        throw new Error("xAI WebP evidence must be rejected locally.");
+      };
+      await assert.rejects(
+        judgeObject(
+          { image: "data:image/webp;base64,AA==" },
+          undefined,
+          { clientCredential: { provider: "xai", apiKey: TEST_KEYS.xai } },
+        ),
+        (error) => error.statusCode === 415 && /JPEG or PNG/i.test(error.message),
+      );
+      assert.equal(webpUpstreamCalls, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("browser deployment contract", () => {
+  it("keeps the provider catalog and memory-only promise aligned", async () => {
+    const [app, html, readme, environment, serviceWorker] = await Promise.all([
+      readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+      readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+      readFile(new URL("../README.md", import.meta.url), "utf8"),
+      readFile(new URL("../.env.example", import.meta.url), "utf8"),
+      readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
+    ]);
+    for (const [provider, profile] of Object.entries(AI_PROVIDERS)) {
+      assert.match(app, new RegExp(profile.defaultModel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      assert.match(readme, new RegExp(profile.defaultModel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      assert.match(environment, new RegExp(profile.defaultModel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      assert.match(html, new RegExp(`value=["']${provider}["']`));
+    }
+    assert.equal((app.match(/localStorage\.setItem/g) || []).length, 1);
+    assert.match(app, /localStorage\.setItem\(HISTORY_KEY/);
+    assert.match(serviceWorker, /request\.method !== "GET"/);
+    assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)/);
   });
 });
 
@@ -242,24 +587,18 @@ describe("local server", () => {
   });
 
   it("reports offline AI status without a key", async () => {
-    const previousKey = process.env.OPENROUTER_API_KEY;
-    try {
-      delete process.env.OPENROUTER_API_KEY;
+    await withEnvironment(NO_HOST_AI_ENV, async () => {
       const response = await fetch(`${baseUrl}/api/status`);
       const payload = await response.json();
       assert.equal(response.status, 200);
       assert.equal(payload.aiConfigured, false);
       assert.equal(payload.provider, "openrouter");
       assert.equal(payload.offlineReady, true);
-    } finally {
-      if (previousKey) process.env.OPENROUTER_API_KEY = previousKey;
-    }
+    });
   });
 
   it("fails closed when live AI has no server-side key", async () => {
-    const previousKey = process.env.OPENROUTER_API_KEY;
-    try {
-      delete process.env.OPENROUTER_API_KEY;
+    await withEnvironment(NO_HOST_AI_ENV, async () => {
       const response = await fetch(`${baseUrl}/api/judge`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -268,15 +607,11 @@ describe("local server", () => {
       const payload = await response.json();
       assert.equal(response.status, 503);
       assert.match(payload.error, /not configured/i);
-    } finally {
-      if (previousKey) process.env.OPENROUTER_API_KEY = previousKey;
-    }
+    });
   });
 
   it("falls back safely when Trash Court has no server-side key", async () => {
-    const previousKey = process.env.OPENROUTER_API_KEY;
-    try {
-      delete process.env.OPENROUTER_API_KEY;
+    await withEnvironment(NO_HOST_AI_ENV, async () => {
       const response = await fetch(`${baseUrl}/api/appeal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -287,9 +622,7 @@ describe("local server", () => {
       });
       assert.equal(response.status, 503);
       assert.match((await response.json()).error, /not configured/i);
-    } finally {
-      if (previousKey) process.env.OPENROUTER_API_KEY = previousKey;
-    }
+    });
   });
 
   it("rejects non-JSON and cross-origin paid requests", async () => {
@@ -331,6 +664,58 @@ describe("local server", () => {
     assert.equal(emptyAppeal.status, 400);
   });
 
+  it("routes every browser provider through the local transport", async () => {
+    const originalFetch = globalThis.fetch;
+    const verdict = {
+      object_name: "CUP",
+      reframe_name: "TINY VESSEL",
+      headline: "STILL TRYING",
+      monologue: "Empty is just full of opportunity.",
+      verdict: "refuse",
+      potential: 91,
+      footnote: "Hydration pending.",
+    };
+    const providerCases = [
+      ["openrouter", "https://openrouter.ai/api/v1/chat/completions"],
+      ["openai", "https://api.openai.com/v1/responses"],
+      ["xai", "https://api.x.ai/v1/responses"],
+      ["anthropic", "https://api.anthropic.com/v1/messages"],
+    ];
+    try {
+      for (const [provider, expectedUrl] of providerCases) {
+        let upstreamUrl;
+        globalThis.fetch = async (url) => {
+          upstreamUrl = String(url);
+          const payload = provider === "openrouter"
+            ? { choices: [{ message: { content: JSON.stringify(verdict) } }] }
+            : provider === "anthropic"
+              ? { stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(verdict) }] }
+              : { status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify(verdict) }] }] };
+          return new Response(JSON.stringify(payload), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        };
+        const response = await originalFetch(`${baseUrl}/api/judge`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${TEST_KEYS[provider]}`,
+            "Content-Type": "application/json",
+            "X-NCD-AI-Provider": provider,
+          },
+          body: JSON.stringify({ image: "data:image/jpeg;base64,AA==" }),
+        });
+        const payload = await response.json();
+        assert.equal(response.status, 200);
+        assert.equal(upstreamUrl, expectedUrl);
+        assert.equal(payload.provider, provider);
+        assert.equal(payload.model, AI_PROVIDERS[provider].defaultModel);
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("serves offline assets and handles HEAD without a body", async () => {
     const manifest = await fetch(`${baseUrl}/manifest.webmanifest`);
     assert.equal(manifest.status, 200);
@@ -351,17 +736,20 @@ describe("local server", () => {
     const source = await response.text();
     assert.doesNotMatch(source, /process\.env/);
     assert.doesNotMatch(source, /sk-[A-Za-z0-9_-]{12,}/);
+    assert.doesNotMatch(source, /xai-[A-Za-z0-9_-]{12,}/);
   });
 });
 
 describe("Vercel function transport", () => {
   it("returns status and health without starting a listener", async () => {
-    const statusResponse = getVercelStatus();
-    const status = await statusResponse.json();
-    assert.equal(statusResponse.status, 200);
-    assert.equal(status.provider, "openrouter");
-    assert.equal(status.offlineReady, true);
-    assert.equal(statusResponse.headers.get("cache-control"), "no-store");
+    await withEnvironment(NO_HOST_AI_ENV, async () => {
+      const statusResponse = getVercelStatus();
+      const status = await statusResponse.json();
+      assert.equal(statusResponse.status, 200);
+      assert.equal(status.provider, "openrouter");
+      assert.equal(status.offlineReady, true);
+      assert.equal(statusResponse.headers.get("cache-control"), "no-store");
+    });
 
     const healthResponse = getVercelHealth();
     const health = await healthResponse.json();
@@ -385,69 +773,80 @@ describe("Vercel function transport", () => {
     assert.equal(crossOrigin.status, 403);
   });
 
-  it("uses a browser key for Vercel judgments without requiring a host key", async () => {
-    const previousKey = process.env.OPENROUTER_API_KEY;
+  it("routes a selected xAI browser key through a Vercel judgment", async () => {
+    const previousKey = process.env.XAI_API_KEY;
     const originalFetch = globalThis.fetch;
     let upstreamAuthorization;
+    let upstreamUrl;
     try {
-      delete process.env.OPENROUTER_API_KEY;
-      globalThis.fetch = async (_url, init) => {
+      delete process.env.XAI_API_KEY;
+      globalThis.fetch = async (url, init) => {
+        upstreamUrl = url;
         upstreamAuthorization = init.headers.Authorization;
         return new Response(JSON.stringify({
-          choices: [{ message: { content: JSON.stringify({
-            object_name: "CUP",
-            reframe_name: "TINY VESSEL",
-            headline: "STILL TRYING",
-            monologue: "Empty is just full of opportunity.",
-            verdict: "refuse",
-            potential: 91,
-            footnote: "Hydration pending.",
-          }) } }],
+          status: "completed",
+          output: [{ content: [{ type: "output_text", text: JSON.stringify({
+              object_name: "CUP",
+              reframe_name: "TINY VESSEL",
+              headline: "STILL TRYING",
+              monologue: "Empty is just full of opportunity.",
+              verdict: "refuse",
+              potential: 91,
+              footnote: "Hydration pending.",
+            }) }] }],
         }), { status: 200, headers: { "Content-Type": "application/json" } });
       };
       const response = await postVercelJudge(new Request("https://no-can-do.vercel.app/api/judge", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${TEST_CLIENT_KEY}`,
+          Authorization: `Bearer ${TEST_KEYS.xai}`,
           "Content-Type": "application/json",
           Origin: "https://no-can-do.vercel.app",
+          "X-NCD-AI-Provider": "xai",
         },
         body: JSON.stringify({ image: "data:image/jpeg;base64,AA==" }),
       }));
       assert.equal(response.status, 200);
-      assert.equal(upstreamAuthorization, `Bearer ${TEST_CLIENT_KEY}`);
-      assert.equal((await response.json()).object_name, "CUP");
+      assert.equal(upstreamUrl, "https://api.x.ai/v1/responses");
+      assert.equal(upstreamAuthorization, `Bearer ${TEST_KEYS.xai}`);
+      const payload = await response.json();
+      assert.equal(payload.object_name, "CUP");
+      assert.equal(payload.provider, "xai");
     } finally {
       globalThis.fetch = originalFetch;
-      if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
-      else process.env.OPENROUTER_API_KEY = previousKey;
+      if (previousKey === undefined) delete process.env.XAI_API_KEY;
+      else process.env.XAI_API_KEY = previousKey;
     }
   });
 
-  it("forwards the browser key for appeals too", async () => {
-    const previousKey = process.env.OPENROUTER_API_KEY;
+  it("routes a selected Anthropic browser key through a Vercel appeal", async () => {
+    const previousKey = process.env.ANTHROPIC_API_KEY;
     const originalFetch = globalThis.fetch;
-    let upstreamAuthorization;
+    let upstreamApiKey;
+    let upstreamUrl;
     try {
-      delete process.env.OPENROUTER_API_KEY;
-      globalThis.fetch = async (_url, init) => {
-        upstreamAuthorization = init.headers.Authorization;
+      delete process.env.ANTHROPIC_API_KEY;
+      globalThis.fetch = async (url, init) => {
+        upstreamUrl = url;
+        upstreamApiKey = init.headers["x-api-key"];
         return new Response(JSON.stringify({
-          choices: [{ message: { content: JSON.stringify({
-            ruling: "APPEAL DENIED",
-            response: "The court finds this cup guilty of having a future.",
-            new_job: "TINY PLANTER",
-            sentence: "Mentor one succulent.",
-            fine: "One sincere apology",
-          }) } }],
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: JSON.stringify({
+              ruling: "APPEAL DENIED",
+              response: "The court finds this cup guilty of having a future.",
+              new_job: "TINY PLANTER",
+              sentence: "Mentor one succulent.",
+              fine: "One sincere apology",
+            }) }],
         }), { status: 200, headers: { "Content-Type": "application/json" } });
       };
       const response = await postVercelAppeal(new Request("https://no-can-do.vercel.app/api/appeal", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${TEST_CLIENT_KEY}`,
+          Authorization: `Bearer ${TEST_KEYS.anthropic}`,
           "Content-Type": "application/json",
           Origin: "https://no-can-do.vercel.app",
+          "X-NCD-AI-Provider": "anthropic",
         },
         body: JSON.stringify({
           verdict: { object_name: "CUP", reframe_name: "TINY PLANTER", verdict: "refuse" },
@@ -455,12 +854,15 @@ describe("Vercel function transport", () => {
         }),
       }));
       assert.equal(response.status, 200);
-      assert.equal(upstreamAuthorization, `Bearer ${TEST_CLIENT_KEY}`);
-      assert.equal((await response.json()).ruling, "APPEAL DENIED");
+      assert.equal(upstreamUrl, "https://api.anthropic.com/v1/messages");
+      assert.equal(upstreamApiKey, TEST_KEYS.anthropic);
+      const payload = await response.json();
+      assert.equal(payload.ruling, "APPEAL DENIED");
+      assert.equal(payload.provider, "anthropic");
     } finally {
       globalThis.fetch = originalFetch;
-      if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
-      else process.env.OPENROUTER_API_KEY = previousKey;
+      if (previousKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = previousKey;
     }
   });
 
@@ -496,9 +898,7 @@ describe("Vercel function transport", () => {
   });
 
   it("fails closed without an API key in a Vercel invocation", async () => {
-    const previousKey = process.env.OPENROUTER_API_KEY;
-    try {
-      delete process.env.OPENROUTER_API_KEY;
+    await withEnvironment(NO_HOST_AI_ENV, async () => {
       const response = await postVercelJudge(new Request("https://no-can-do.vercel.app/api/judge", {
         method: "POST",
         headers: {
@@ -509,8 +909,6 @@ describe("Vercel function transport", () => {
       }));
       assert.equal(response.status, 503);
       assert.match((await response.json()).error, /not configured/i);
-    } finally {
-      if (previousKey) process.env.OPENROUTER_API_KEY = previousKey;
-    }
+    });
   });
 });
