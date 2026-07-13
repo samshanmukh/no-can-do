@@ -1234,6 +1234,23 @@ body[data-state="result"] .result-actions {
   background: var(--ink);
 }
 
+.mode-button.is-unavailable,
+.prop-button.is-unavailable {
+  color: #8a294b;
+  background: #fff1f5;
+}
+
+.mode-button.is-unavailable::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: #ff4f87;
+  vertical-align: middle;
+}
+
 .demo-props {
   display: flex;
   align-items: center;

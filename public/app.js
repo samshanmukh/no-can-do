@@ -133,6 +133,7 @@ const elements = {
   judgeButton: $("#judge-button"),
   judgeButtonLabel: $("#judge-button-label"),
   liveWildcard: $("#live-wildcard"),
+  liveModeButton: $('.mode-button[data-mode="live"]'),
   moodChip: $("#mood-chip"),
   objectName: $("#object-name"),
   potentialFill: $("#potential-fill"),
@@ -476,18 +477,37 @@ function setState(state) {
 }
 
 function setMode(mode) {
+  if (mode === "live" && !aiConfigured) {
+    currentMode = "demo";
+    updateLiveAvailability();
+    showToast("Live AI is offline. Add OPENAI_API_KEY in Vercel; scripted mode is ready.", 5200);
+    return false;
+  }
+
   currentMode = mode;
   $$(".mode-button").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.mode === mode);
   });
 
-  if (mode === "live" && !aiConfigured) {
-    showToast("Live AI needs OPENAI_API_KEY. Binjamin's local opinions still work.", 4200);
-  } else if (mode === "live") {
+  if (mode === "live") {
     showToast("Live AI enabled. Unexpected emotional projections incoming.");
   } else {
     showToast("Scripted mode: three jokes, zero Wi-Fi anxiety.");
   }
+  return true;
+}
+
+function updateLiveAvailability() {
+  elements.liveModeButton.classList.toggle("is-unavailable", !aiConfigured);
+  elements.liveModeButton.textContent = aiConfigured ? "LIVE AI" : "LIVE AI · OFFLINE";
+  elements.liveModeButton.title = aiConfigured
+    ? "Judge an object with live AI vision"
+    : "Add OPENAI_API_KEY in Vercel to enable live AI vision";
+  elements.liveWildcard.classList.toggle("is-unavailable", !aiConfigured);
+  elements.liveWildcard.title = elements.liveModeButton.title;
+  $$(".mode-button").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.mode === currentMode);
+  });
 }
 
 async function checkSystemStatus() {
@@ -496,10 +516,14 @@ async function checkSystemStatus() {
     const status = await response.json();
     aiConfigured = Boolean(status.aiConfigured);
     elements.apiDot.classList.toggle("is-live", aiConfigured);
-    elements.apiLabel.textContent = aiConfigured ? `AI KEY READY · ${status.model}` : "LOCAL GENIUS · READY";
+    elements.apiLabel.textContent = aiConfigured
+      ? `AI KEY READY · ${status.model}`
+      : "SCRIPTED READY · LIVE AI OFFLINE";
   } catch {
-    elements.apiLabel.textContent = "LOCAL GENIUS · READY";
+    aiConfigured = false;
+    elements.apiLabel.textContent = "SCRIPTED READY · LIVE AI OFFLINE";
   }
+  updateLiveAvailability();
 
   if (!("serial" in navigator)) {
     elements.serialButton.title = "Web Serial requires Chrome or Edge on localhost/HTTPS.";
@@ -807,6 +831,10 @@ async function runDemo(requestedKey) {
 
 async function runLiveJudgment() {
   if (isBusy) return;
+  if (!aiConfigured) {
+    setMode("live");
+    return;
+  }
   if (serialState === "ready" && serialLidState === "open") {
     showToast("Close the lid before convening another hearing. Safety has standing.", 4600);
     return;
@@ -1143,7 +1171,7 @@ function handleKeyboard(event) {
   }
   if (event.key.toLowerCase() === "l") {
     event.preventDefault();
-    setMode("live");
+    if (!setMode("live")) return;
     void runLiveJudgment();
     return;
   }
@@ -1194,7 +1222,7 @@ elements.clearHistory.addEventListener("click", () => {
 });
 elements.presenterToggle.addEventListener("click", togglePresenterMode);
 elements.liveWildcard.addEventListener("click", () => {
-  setMode("live");
+  if (!setMode("live")) return;
   void runLiveJudgment();
 });
 elements.soundToggle.addEventListener("click", toggleSound);

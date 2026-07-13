@@ -1,4 +1,4 @@
-const CACHE_NAME = "no-can-do-v2";
+const CACHE_NAME = "no-can-do-v3";
 const CORE_ASSETS = ["/", "/index.html", "/styles.css", "/app.js", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
