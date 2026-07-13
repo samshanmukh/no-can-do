@@ -4,9 +4,9 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("./public", import.meta.url));
-export const DEFAULT_MODEL = "gpt-5.4-mini";
+export const DEFAULT_MODEL = "google/gemini-3.1-flash-lite";
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
-const API_TIMEOUT_MS = 6_000;
+const API_TIMEOUT_MS = 8_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 40;
 const MAX_IN_FLIGHT = 3;
@@ -136,6 +136,16 @@ Comedy rules:
 `;
 
 export function extractOutputText(response) {
+  const messageContent = response?.choices?.[0]?.message?.content;
+  if (typeof messageContent === "string") return messageContent;
+  if (Array.isArray(messageContent)) {
+    for (const content of messageContent) {
+      if ((content?.type === "text" || content?.type === "output_text") && content.text) {
+        return content.text;
+      }
+    }
+  }
+  if (typeof response?.output_text === "string") return response.output_text;
   for (const item of response?.output ?? []) {
     for (const content of item?.content ?? []) {
       if (content?.type === "output_text" && content.text) return content.text;
@@ -235,32 +245,41 @@ function sendJson(response, statusCode, body) {
   response.end(JSON.stringify(body));
 }
 
-async function requestStructuredOutput({ instructions, input, schema, schemaName, signal }) {
-  const apiKey = process.env.OPENAI_API_KEY;
+async function requestStructuredOutput({ instructions, userContent, schema, schemaName, signal }) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    const error = new Error("Live AI is not configured. Scripted genius remains available.");
+    const error = new Error("OpenRouter is not configured. Scripted genius remains available.");
     error.statusCode = 503;
     throw error;
   }
 
   let apiResponse;
   try {
-    apiResponse = await fetch("https://api.openai.com/v1/responses", {
+    apiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       signal,
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://no-can-do.vercel.app",
+        "X-OpenRouter-Title": "NO CAN DO",
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || DEFAULT_MODEL,
-        store: false,
-        max_output_tokens: 300,
-        instructions,
-        input,
-        text: {
-          format: {
-            type: "json_schema",
+        model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL,
+        messages: [
+          { role: "system", content: instructions.trim() },
+          { role: "user", content: userContent },
+        ],
+        max_tokens: 300,
+        reasoning: { effort: "minimal", exclude: true },
+        provider: {
+          require_parameters: true,
+          zdr: true,
+          data_collection: "deny",
+        },
+        response_format: {
+          type: "json_schema",
+          json_schema: {
             name: schemaName,
             strict: true,
             schema,
@@ -279,7 +298,7 @@ async function requestStructuredOutput({ instructions, input, schema, schemaName
 
   const payload = await apiResponse.json().catch(() => ({}));
   if (!apiResponse.ok) {
-    console.error(`[OpenAI ${apiResponse.status}] ${payload?.error?.code || "upstream_error"}`);
+    console.error(`[OpenRouter ${apiResponse.status}] ${payload?.error?.code || "upstream_error"}`);
     const error = new Error("Live AI could not hear this case. Scripted precedent is still available.");
     error.statusCode = apiResponse.status === 429 ? 503 : 502;
     throw error;
@@ -308,21 +327,16 @@ export async function judgeObject(body, signal) {
     throw error;
   }
 
-  const model = process.env.OPENAI_MODEL || DEFAULT_MODEL;
+  const model = process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
   const userText = hint
     ? `Judge the central object. The presenter says it may be: ${String(hint).slice(0, 120)}`
     : "Judge the single most prominent object being presented to the trash can.";
 
   const payload = await requestStructuredOutput({
     instructions: BINJAMIN_INSTRUCTIONS,
-    input: [
-      {
-        role: "user",
-        content: [
-          { type: "input_text", text: userText },
-          { type: "input_image", image_url: image, detail: "low" },
-        ],
-      },
+    userContent: [
+      { type: "text", text: userText },
+      { type: "image_url", image_url: { url: image } },
     ],
     schema: VERDICT_SCHEMA,
     schemaName: "binjamin_verdict",
@@ -354,13 +368,13 @@ export async function appealVerdict(body, signal) {
   };
   const payload = await requestStructuredOutput({
     instructions: APPEAL_INSTRUCTIONS,
-    input: `CASE FILE:\n${JSON.stringify(caseFile)}\n\nIssue the final ruling.`,
+    userContent: `CASE FILE:\n${JSON.stringify(caseFile)}\n\nIssue the final ruling.`,
     schema: APPEAL_SCHEMA,
     schemaName: "supreme_court_of_refuse_ruling",
     signal,
   });
   try {
-    return { ...parseAppealResponse(payload), model: process.env.OPENAI_MODEL || DEFAULT_MODEL };
+    return { ...parseAppealResponse(payload), model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL };
   } catch (error) {
     error.statusCode = 502;
     throw error;
@@ -428,8 +442,9 @@ export function createServer() {
 
       if (request.method === "GET" && url.pathname === "/api/status") {
         sendJson(response, 200, {
-          aiConfigured: Boolean(process.env.OPENAI_API_KEY),
-          model: process.env.OPENAI_MODEL || DEFAULT_MODEL,
+          aiConfigured: Boolean(process.env.OPENROUTER_API_KEY),
+          provider: "openrouter",
+          model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL,
           offlineReady: true,
         });
         return;

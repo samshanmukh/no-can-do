@@ -3,6 +3,7 @@ import { after, before, describe, it } from "node:test";
 import {
   createServer,
   extractOutputText,
+  judgeObject,
   parseAppealResponse,
   parseVerdictResponse,
 } from "../server.mjs";
@@ -10,7 +11,7 @@ import { GET as getVercelHealth } from "../api/health.mjs";
 import { POST as postVercelJudge } from "../api/judge.mjs";
 import { GET as getVercelStatus } from "../api/status.mjs";
 
-describe("OpenAI response parsing", () => {
+describe("OpenRouter response parsing", () => {
   const verdict = {
     object_name: "CUP",
     reframe_name: "TINY VESSEL",
@@ -22,16 +23,10 @@ describe("OpenAI response parsing", () => {
   };
 
   const response = {
-    output: [
-      { type: "reasoning", content: [] },
-      {
-        type: "message",
-        content: [{ type: "output_text", text: JSON.stringify(verdict) }],
-      },
-    ],
+    choices: [{ message: { role: "assistant", content: JSON.stringify(verdict) } }],
   };
 
-  it("extracts output text from a Responses API payload", () => {
+  it("extracts output text from an OpenRouter chat completion", () => {
     assert.equal(extractOutputText(response), JSON.stringify(verdict));
   });
 
@@ -40,15 +35,13 @@ describe("OpenAI response parsing", () => {
   });
 
   it("rejects an incomplete verdict", () => {
-    const incomplete = {
-      output: [{ content: [{ type: "output_text", text: '{"verdict":"refuse"}' }] }],
-    };
+    const incomplete = { choices: [{ message: { content: '{"verdict":"refuse"}' } }] };
     assert.throws(() => parseVerdictResponse(incomplete), /incomplete/);
   });
 
   it("rejects wrong structured-output types", () => {
     const wrongType = structuredClone(response);
-    wrongType.output[1].content[0].text = JSON.stringify({ ...verdict, potential: "91" });
+    wrongType.choices[0].message.content = JSON.stringify({ ...verdict, potential: "91" });
     assert.throws(() => parseVerdictResponse(wrongType), /invalid potential/);
   });
 
@@ -60,8 +53,68 @@ describe("OpenAI response parsing", () => {
       sentence: "Mentor one succulent.",
       fine: "One sincere apology",
     };
-    const payload = { output: [{ content: [{ type: "output_text", text: JSON.stringify(ruling) }] }] };
+    const payload = { choices: [{ message: { content: JSON.stringify(ruling) } }] };
     assert.deepEqual(parseAppealResponse(payload), ruling);
+  });
+});
+
+describe("OpenRouter request contract", () => {
+  it("sends a private, schema-bound multimodal chat request", async () => {
+    const previousKey = process.env.OPENROUTER_API_KEY;
+    const previousModel = process.env.OPENROUTER_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl;
+    let capturedInit;
+    const verdict = {
+      object_name: "CUP",
+      reframe_name: "TINY VESSEL",
+      headline: "STILL TRYING",
+      monologue: "Empty is just full of opportunity.",
+      verdict: "refuse",
+      potential: 91,
+      footnote: "Hydration pending.",
+    };
+
+    try {
+      process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+      process.env.OPENROUTER_MODEL = "test/vision-model";
+      globalThis.fetch = async (url, init) => {
+        capturedUrl = url;
+        capturedInit = init;
+        return new Response(JSON.stringify({
+          choices: [{ message: { role: "assistant", content: JSON.stringify(verdict) } }],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      };
+
+      const result = await judgeObject({
+        image: "data:image/jpeg;base64,AA==",
+        hint: "coffee cup",
+      });
+      const body = JSON.parse(capturedInit.body);
+
+      assert.equal(capturedUrl, "https://openrouter.ai/api/v1/chat/completions");
+      assert.equal(capturedInit.headers.Authorization, "Bearer test-openrouter-key");
+      assert.equal(capturedInit.headers["X-OpenRouter-Title"], "NO CAN DO");
+      assert.equal(body.model, "test/vision-model");
+      assert.deepEqual(body.provider, {
+        require_parameters: true,
+        zdr: true,
+        data_collection: "deny",
+      });
+      assert.deepEqual(body.reasoning, { effort: "minimal", exclude: true });
+      assert.equal(body.response_format.type, "json_schema");
+      assert.equal(body.response_format.json_schema.strict, true);
+      assert.equal(body.messages[1].content[0].type, "text");
+      assert.equal(body.messages[1].content[1].type, "image_url");
+      assert.equal(body.messages[1].content[1].image_url.url, "data:image/jpeg;base64,AA==");
+      assert.deepEqual(result, { ...verdict, model: "test/vision-model" });
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = previousKey;
+      if (previousModel === undefined) delete process.env.OPENROUTER_MODEL;
+      else process.env.OPENROUTER_MODEL = previousModel;
+    }
   });
 });
 
@@ -100,23 +153,24 @@ describe("local server", () => {
   });
 
   it("reports offline AI status without a key", async () => {
-    const previousKey = process.env.OPENAI_API_KEY;
+    const previousKey = process.env.OPENROUTER_API_KEY;
     try {
-      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENROUTER_API_KEY;
       const response = await fetch(`${baseUrl}/api/status`);
       const payload = await response.json();
       assert.equal(response.status, 200);
       assert.equal(payload.aiConfigured, false);
+      assert.equal(payload.provider, "openrouter");
       assert.equal(payload.offlineReady, true);
     } finally {
-      if (previousKey) process.env.OPENAI_API_KEY = previousKey;
+      if (previousKey) process.env.OPENROUTER_API_KEY = previousKey;
     }
   });
 
   it("fails closed when live AI has no server-side key", async () => {
-    const previousKey = process.env.OPENAI_API_KEY;
+    const previousKey = process.env.OPENROUTER_API_KEY;
     try {
-      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENROUTER_API_KEY;
       const response = await fetch(`${baseUrl}/api/judge`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -126,14 +180,14 @@ describe("local server", () => {
       assert.equal(response.status, 503);
       assert.match(payload.error, /not configured/i);
     } finally {
-      if (previousKey) process.env.OPENAI_API_KEY = previousKey;
+      if (previousKey) process.env.OPENROUTER_API_KEY = previousKey;
     }
   });
 
   it("falls back safely when Trash Court has no server-side key", async () => {
-    const previousKey = process.env.OPENAI_API_KEY;
+    const previousKey = process.env.OPENROUTER_API_KEY;
     try {
-      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENROUTER_API_KEY;
       const response = await fetch(`${baseUrl}/api/appeal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -145,7 +199,7 @@ describe("local server", () => {
       assert.equal(response.status, 503);
       assert.match((await response.json()).error, /not configured/i);
     } finally {
-      if (previousKey) process.env.OPENAI_API_KEY = previousKey;
+      if (previousKey) process.env.OPENROUTER_API_KEY = previousKey;
     }
   });
 
@@ -216,6 +270,7 @@ describe("Vercel function transport", () => {
     const statusResponse = getVercelStatus();
     const status = await statusResponse.json();
     assert.equal(statusResponse.status, 200);
+    assert.equal(status.provider, "openrouter");
     assert.equal(status.offlineReady, true);
     assert.equal(statusResponse.headers.get("cache-control"), "no-store");
 
@@ -242,9 +297,9 @@ describe("Vercel function transport", () => {
   });
 
   it("fails closed without an API key in a Vercel invocation", async () => {
-    const previousKey = process.env.OPENAI_API_KEY;
+    const previousKey = process.env.OPENROUTER_API_KEY;
     try {
-      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENROUTER_API_KEY;
       const response = await postVercelJudge(new Request("https://no-can-do.vercel.app/api/judge", {
         method: "POST",
         headers: {
@@ -256,7 +311,7 @@ describe("Vercel function transport", () => {
       assert.equal(response.status, 503);
       assert.match((await response.json()).error, /not configured/i);
     } finally {
-      if (previousKey) process.env.OPENAI_API_KEY = previousKey;
+      if (previousKey) process.env.OPENROUTER_API_KEY = previousKey;
     }
   });
 });

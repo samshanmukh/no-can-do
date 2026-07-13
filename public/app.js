@@ -395,7 +395,7 @@ async function submitAppeal() {
 
   if (aiConfigured) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4_200);
+    const timeout = setTimeout(() => controller.abort(), 7_200);
     try {
       const response = await fetch("/api/appeal", {
         method: "POST",
@@ -480,7 +480,7 @@ function setMode(mode) {
   if (mode === "live" && !aiConfigured) {
     currentMode = "demo";
     updateLiveAvailability();
-    showToast("Live AI is offline. Add OPENAI_API_KEY in Vercel; scripted mode is ready.", 5200);
+    showToast("Live AI is offline. Add OPENROUTER_API_KEY in Vercel; scripted mode is ready.", 5200);
     return false;
   }
 
@@ -502,7 +502,7 @@ function updateLiveAvailability() {
   elements.liveModeButton.textContent = aiConfigured ? "LIVE AI" : "LIVE AI · OFFLINE";
   elements.liveModeButton.title = aiConfigured
     ? "Judge an object with live AI vision"
-    : "Add OPENAI_API_KEY in Vercel to enable live AI vision";
+    : "Add OPENROUTER_API_KEY in Vercel to enable live AI vision";
   elements.liveWildcard.classList.toggle("is-unavailable", !aiConfigured);
   elements.liveWildcard.title = elements.liveModeButton.title;
   $$(".mode-button").forEach((button) => {
@@ -517,7 +517,7 @@ async function checkSystemStatus() {
     aiConfigured = Boolean(status.aiConfigured);
     elements.apiDot.classList.toggle("is-live", aiConfigured);
     elements.apiLabel.textContent = aiConfigured
-      ? `AI KEY READY · ${status.model}`
+      ? `OPENROUTER READY · ${status.model}`
       : "SCRIPTED READY · LIVE AI OFFLINE";
   } catch {
     aiConfigured = false;
@@ -852,7 +852,7 @@ async function runLiveJudgment() {
   const startedAt = performance.now();
   const controller = new AbortController();
   activeLiveController = controller;
-  const timeout = setTimeout(() => controller.abort(), 4_200);
+  const timeout = setTimeout(() => controller.abort(), 7_200);
 
   try {
     const response = await fetch("/api/judge", {

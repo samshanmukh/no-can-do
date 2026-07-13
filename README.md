@@ -40,15 +40,15 @@ cp .env.example .env
 ```
 
 ```dotenv
-OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-5.4-mini
+OPENROUTER_API_KEY=your_key_here
+OPENROUTER_MODEL=google/gemini-3.1-flash-lite
 ```
 
-Restart the server and select **Live AI**. The key remains server-side. Camera frames are sent once with `store: false`; the app does not intentionally save them.
+Restart the server and select **Live AI**. The key remains server-side. Camera frames are sent once per judgment, and each OpenRouter request requires a zero-data-retention endpoint and denies provider data collection; the app does not intentionally save frames. See OpenRouter's [ZDR guide](https://openrouter.ai/docs/guides/features/zdr).
 
-The server uses the OpenAI Responses API with a low-detail base64 image input and strict JSON-schema output. See the official [vision guide](https://developers.openai.com/api/docs/guides/images-vision) and [structured outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs).
+The server uses OpenRouter's Chat Completions API with a base64 image input and strict JSON-schema output. The default is the low-latency, vision-capable `google/gemini-3.1-flash-lite`, and any compatible model can be selected with `OPENROUTER_MODEL`. See OpenRouter's official [image input guide](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding) and [structured outputs guide](https://openrouter.ai/docs/guides/features/structured-outputs).
 
-If the API is unavailable or takes more than four seconds, Binjamin switches to an object-agnostic local verdict so the joke lands without claiming a blurry coffee cup is a sock. Emergency scripted prop buttons cancel a stalled live request immediately.
+If the API is unavailable or takes roughly seven seconds, Binjamin switches to an object-agnostic local verdict so the joke lands without claiming a blurry coffee cup is a sock. Emergency scripted prop buttons cancel a stalled live request immediately.
 
 The server binds to loopback only, keeps the API key server-side, rejects cross-origin and non-JSON judgment requests, limits request size/rate/concurrency, validates structured output again at the trust boundary, and applies restrictive browser security headers. `/api/health` is available for a pre-demo check.
 
@@ -56,7 +56,7 @@ The server binds to loopback only, keeps the API key server-side, rejects cross-
 
 Vercel serves the experience from `public/` and deploys the handlers in `api/` as Node.js Functions. Pushes to the connected `main` branch deploy automatically.
 
-Add `OPENAI_API_KEY` and, optionally, `OPENAI_MODEL` in the Vercel project settings for live judgments. Without a key, the deployed app still runs its complete scripted demo and reports that live AI is unavailable.
+Add `OPENROUTER_API_KEY` and, optionally, `OPENROUTER_MODEL` in the Vercel project settings for live judgments. Without a key, the deployed app still runs its complete scripted demo and reports that live AI is unavailable.
 
 Validate the exact production build locally with:
 
