@@ -6,7 +6,7 @@ The project is designed for a two-minute hackathon demo that keeps working even 
 
 ## Run it
 
-No install or build step is required. Use Node 22.9 or newer:
+No install or build step is required. Use Node 22:
 
 ```bash
 npm run dev
@@ -51,6 +51,18 @@ The server uses the OpenAI Responses API with a low-detail base64 image input an
 If the API is unavailable or takes more than four seconds, Binjamin switches to an object-agnostic local verdict so the joke lands without claiming a blurry coffee cup is a sock. Emergency scripted prop buttons cancel a stalled live request immediately.
 
 The server binds to loopback only, keeps the API key server-side, rejects cross-origin and non-JSON judgment requests, limits request size/rate/concurrency, validates structured output again at the trust boundary, and applies restrictive browser security headers. `/api/health` is available for a pre-demo check.
+
+## Deploy on Vercel
+
+Vercel serves the experience from `public/` and deploys the handlers in `api/` as Node.js Functions. Pushes to the connected `main` branch deploy automatically.
+
+Add `OPENAI_API_KEY` and, optionally, `OPENAI_MODEL` in the Vercel project settings for live judgments. Without a key, the deployed app still runs its complete scripted demo and reports that live AI is unavailable.
+
+Validate the exact production build locally with:
+
+```bash
+vercel build --prod
+```
 
 ## Servo-powered lid
 

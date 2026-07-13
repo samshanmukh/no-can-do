@@ -6,6 +6,9 @@ import {
   parseAppealResponse,
   parseVerdictResponse,
 } from "../server.mjs";
+import { GET as getVercelHealth } from "../api/health.mjs";
+import { POST as postVercelJudge } from "../api/judge.mjs";
+import { GET as getVercelStatus } from "../api/status.mjs";
 
 describe("OpenAI response parsing", () => {
   const verdict = {
@@ -205,5 +208,55 @@ describe("local server", () => {
     const source = await response.text();
     assert.doesNotMatch(source, /process\.env/);
     assert.doesNotMatch(source, /sk-[A-Za-z0-9_-]{12,}/);
+  });
+});
+
+describe("Vercel function transport", () => {
+  it("returns status and health without starting a listener", async () => {
+    const statusResponse = getVercelStatus();
+    const status = await statusResponse.json();
+    assert.equal(statusResponse.status, 200);
+    assert.equal(status.offlineReady, true);
+    assert.equal(statusResponse.headers.get("cache-control"), "no-store");
+
+    const healthResponse = getVercelHealth();
+    const health = await healthResponse.json();
+    assert.deepEqual(health, { ok: true, service: "no-can-do", runtime: "vercel-function" });
+    assert.equal(healthResponse.headers.get("x-content-type-options"), "nosniff");
+  });
+
+  it("rejects malformed and cross-origin function requests", async () => {
+    const malformed = await postVercelJudge(new Request("https://no-can-do.vercel.app/api/judge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{not-json}",
+    }));
+    assert.equal(malformed.status, 400);
+
+    const crossOrigin = await postVercelJudge(new Request("https://no-can-do.vercel.app/api/judge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "https://evil.example" },
+      body: "{}",
+    }));
+    assert.equal(crossOrigin.status, 403);
+  });
+
+  it("fails closed without an API key in a Vercel invocation", async () => {
+    const previousKey = process.env.OPENAI_API_KEY;
+    try {
+      delete process.env.OPENAI_API_KEY;
+      const response = await postVercelJudge(new Request("https://no-can-do.vercel.app/api/judge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "https://no-can-do.vercel.app",
+        },
+        body: JSON.stringify({ image: "data:image/jpeg;base64,AA==" }),
+      }));
+      assert.equal(response.status, 503);
+      assert.match((await response.json()).error, /not configured/i);
+    } finally {
+      if (previousKey) process.env.OPENAI_API_KEY = previousKey;
+    }
   });
 });

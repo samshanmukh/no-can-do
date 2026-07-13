@@ -4,14 +4,14 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("./public", import.meta.url));
-const DEFAULT_MODEL = "gpt-5.4-mini";
-const MAX_BODY_BYTES = 8 * 1024 * 1024;
+export const DEFAULT_MODEL = "gpt-5.4-mini";
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const API_TIMEOUT_MS = 6_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 40;
 const MAX_IN_FLIGHT = 3;
 
-const SECURITY_HEADERS = {
+export const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self'",
   "Cross-Origin-Opener-Policy": "same-origin",
   "Permissions-Policy": "camera=(self), microphone=(self), fullscreen=(self)",
@@ -287,7 +287,7 @@ async function requestStructuredOutput({ instructions, input, schema, schemaName
   return payload;
 }
 
-async function judgeObject(body, signal) {
+export async function judgeObject(body, signal) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     const error = new Error("Request body must be an object.");
     error.statusCode = 400;
@@ -337,7 +337,7 @@ async function judgeObject(body, signal) {
   }
 }
 
-async function appealVerdict(body, signal) {
+export async function appealVerdict(body, signal) {
   const verdict = body?.verdict;
   const appeal = typeof body?.appeal === "string" ? body.appeal.trim().slice(0, 320) : "";
   if (!verdict || typeof verdict !== "object" || Array.isArray(verdict) || !appeal) {

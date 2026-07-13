@@ -5,12 +5,12 @@
   "type": "module",
   "description": "The AI trash can that won't take your crap, starring Binjamin.",
   "scripts": {
+    "build": "npm run check",
     "dev": "node --env-file-if-exists=.env server.mjs",
-    "start": "node --env-file-if-exists=.env server.mjs",
-    "check": "node --check server.mjs && node --check public/app.js && node --check public/sw.js",
+    "check": "node --check server.mjs && node --check lib/vercel-api.mjs && node --check api/health.mjs && node --check api/status.mjs && node --check api/judge.mjs && node --check api/appeal.mjs && node --check public/app.js && node --check public/sw.js",
     "test": "node --test"
   },
   "engines": {
-    "node": ">=22.9"
+    "node": "22.x"
   }
 }
