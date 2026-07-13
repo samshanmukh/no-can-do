@@ -1,0 +1,17 @@
+{
+  "name": "NO CAN DO — Featuring Binjamin",
+  "short_name": "NO CAN DO",
+  "description": "The AI trash can that won't take your crap.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3efe7",
+  "theme_color": "#c9ff4a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#c9ff4a"/>
+  <path d="M118 154h276l-20 270H138z" fill="#93a49a" stroke="#171713" stroke-width="22" stroke-linejoin="round"/>
+  <path d="M96 132h320v78H96z" fill="#afbeb4" stroke="#171713" stroke-width="22" stroke-linejoin="round"/>
+  <path d="M197 132V91h118v41" fill="none" stroke="#171713" stroke-width="22" stroke-linejoin="round"/>
+  <ellipse cx="211" cy="169" rx="22" ry="18" fill="#fffdf7" stroke="#171713" stroke-width="12"/>
+  <ellipse cx="301" cy="169" rx="22" ry="18" fill="#fffdf7" stroke="#171713" stroke-width="12"/>
+  <circle cx="216" cy="169" r="8" fill="#171713"/>
+  <circle cx="296" cy="169" r="8" fill="#171713"/>
+  <path d="M226 193h60" stroke="#171713" stroke-width="11" stroke-linecap="round"/>
+  <rect x="176" y="263" width="160" height="88" fill="#c9ff4a" stroke="#171713" stroke-width="12"/>
+  <text x="256" y="302" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="800" fill="#171713">NO CAN</text>
+  <text x="256" y="333" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="800" fill="#171713">DO</text>
+</svg>

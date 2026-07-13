@@ -1,0 +1,16 @@
+{
+  "name": "no-can-do",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The AI trash can that won't take your crap, starring Binjamin.",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env server.mjs",
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "check": "node --check server.mjs && node --check public/app.js && node --check public/sw.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.9"
+  }
+}
