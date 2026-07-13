@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f0e8" />
+    <meta
+      name="description"
+      content="NO CAN DO is the AI trash can that won't take your crap, starring Binjamin, Chief Refuse Officer."
+    />
+    <meta name="robots" content="noindex,follow" />
+    <link rel="canonical" href="https://no-can-do.vercel.app/demo.html" />
+    <title>Try Binjamin — NO CAN DO™ Live Demo</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-state="idle" data-verdict="refuse">
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="NO CAN DO landing page">
+        <span class="brand-mark" aria-hidden="true">
+          <span></span><span></span>
+        </span>
+        <span class="brand-copy"><strong>NO CAN DO™</strong><small>STARRING BINJAMIN, C.R.O.</small></span>
+      </a>
+
+      <p class="tagline">The AI trash can that won't take your crap.</p>
+
+      <div class="header-actions">
+        <button class="impact-button" id="hall-button" type="button" aria-label="Open Hall of Potential">
+          <strong id="saved-count">0</strong><span>OBJECTS<br />SAVED</span>
+        </button>
+        <button
+          class="api-key-button"
+          id="api-key-button"
+          data-testid="api-key-button"
+          type="button"
+          aria-label="Open AI provider and API key settings"
+          aria-haspopup="dialog"
+          aria-controls="api-key-modal"
+        >
+          <span aria-hidden="true">◇</span><b id="api-key-button-label">ADD KEY</b>
+        </button>
+        <div class="system-status" aria-label="System status">
+          <span class="status-dot" id="api-dot" aria-hidden="true"></span>
+          <span id="api-label" aria-live="polite">CHECKING VIBES</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="experience" id="demo">
+      <section class="camera-panel panel" aria-labelledby="camera-title">
+        <div class="panel-kicker">
+          <span>01</span>
+          <h1 id="camera-title">PRESENT YOUR<br />SO-CALLED “TRASH”</h1>
+        </div>
+
+        <div class="viewfinder" id="viewfinder">
+          <video id="camera" autoplay muted playsinline></video>
+          <img id="uploaded-preview" alt="Uploaded object preview" />
+          <canvas id="snapshot" aria-hidden="true"></canvas>
+
+          <div class="camera-empty" id="camera-empty">
+            <div class="empty-object" aria-hidden="true">
+              <span class="empty-spark spark-one">✦</span>
+              <span class="empty-spark spark-two">✦</span>
+              <span class="empty-ring"></span>
+              <span class="empty-plus" id="empty-plus">+</span>
+            </div>
+            <p id="camera-empty-copy">BINJAMIN REQUIRES<br />VISUAL EVIDENCE</p>
+          </div>
+
+          <div class="viewfinder-corners" aria-hidden="true">
+            <i></i><i></i><i></i><i></i>
+          </div>
+          <div class="scan-line" aria-hidden="true"></div>
+          <div class="camera-readout">
+            <span id="camera-readout">NO OBJECT DETECTED</span>
+            <span class="rec-dot"></span>
+          </div>
+        </div>
+
+        <div class="camera-actions">
+          <button class="button button-secondary" id="camera-button" type="button">
+            <span class="button-icon">◉</span>
+            START CAMERA
+          </button>
+          <label class="button button-ghost" for="file-input">
+            <span class="button-icon">↥</span>
+            UPLOAD
+          </label>
+          <input id="file-input" type="file" accept="image/*" />
+        </div>
+
+        <label class="hint-field" for="object-hint">
+          <span>OPTIONAL TIP-OFF</span>
+          <input
+            id="object-hint"
+            type="text"
+            maxlength="120"
+            placeholder="e.g. emotionally unavailable coffee cup"
+            autocomplete="off"
+          />
+        </label>
+
+        <p class="privacy-note">
+          <span aria-hidden="true">⌁</span>
+          Images are analyzed once and never intentionally stored.
+        </p>
+      </section>
+
+      <section class="bin-panel panel" aria-labelledby="bin-title">
+        <div class="panel-kicker bin-kicker">
+          <span>02</span>
+          <h2 id="bin-title">MUNICIPAL<br />LIFE COACH</h2>
+          <div class="mood-chip" id="mood-chip">
+            <span></span>
+            EMOTIONALLY AVAILABLE
+          </div>
+        </div>
+
+        <div class="bin-stage" id="bin-stage">
+          <div class="aura aura-one" aria-hidden="true"></div>
+          <div class="aura aura-two" aria-hidden="true"></div>
+
+          <div class="speech-bubble" id="speech-bubble" aria-live="polite">
+            <span class="speech-eyebrow">BINJAMIN SAYS</span>
+            <p id="speech-text">Show me what society gave up on.</p>
+          </div>
+
+          <div class="binjamin" id="binjamin" aria-label="Animated illustration of Binjamin">
+            <div class="bin-shadow"></div>
+            <div class="lid-wrap">
+              <div class="lid-handle"></div>
+              <div class="bin-lid">
+                <div class="eyebrow eyebrow-left"></div>
+                <div class="eyebrow eyebrow-right"></div>
+                <div class="eye eye-left"><span></span></div>
+                <div class="eye eye-right"><span></span></div>
+                <div class="lid-mouth"></div>
+              </div>
+            </div>
+            <div class="bin-neck"></div>
+            <div class="bin-body">
+              <div class="body-ridge ridge-one"></div>
+              <div class="body-ridge ridge-two"></div>
+              <div class="body-ridge ridge-three"></div>
+              <div class="bin-badge">
+                <span class="badge-heart">♥</span>
+                <strong>BINJAMIN</strong>
+                <small>DEPT. OF SECOND CHANCES</small>
+              </div>
+              <div class="bin-sticker">100%<br />JUDGMENTAL</div>
+            </div>
+            <div class="wheel wheel-left"></div>
+            <div class="wheel wheel-right"></div>
+          </div>
+
+          <div class="thinking-copy" id="thinking-copy" aria-hidden="true">
+            <span>ASSESSING VIBES</span><i></i><i></i><i></i>
+          </div>
+        </div>
+
+        <article class="verdict-card" id="verdict-card" aria-live="polite">
+          <div class="verdict-header">
+            <span id="verdict-label">DISPOSAL DENIED</span>
+            <span id="verdict-symbol">✦</span>
+          </div>
+          <div class="identity-reframe">
+            <div>
+              <span>YOU CALLED IT</span>
+              <strong id="object-name">BANANA PEEL</strong>
+            </div>
+            <span class="reframe-arrow">→</span>
+            <div>
+              <span>BINJAMIN SEES</span>
+              <strong id="reframe-name">RETIRED ATHLETE</strong>
+            </div>
+          </div>
+          <blockquote id="verdict-quote">
+            “That isn’t garbage. That’s a former athlete with potassium-based trauma.”
+          </blockquote>
+          <div class="potential-row">
+            <span>FUTURE POTENTIAL</span>
+            <div class="potential-track"><i id="potential-fill"></i></div>
+            <strong id="potential-value">98%</strong>
+          </div>
+          <p class="verdict-footnote" id="verdict-footnote">* Rejection is a form of redirection.</p>
+        </article>
+
+        <div class="result-actions" id="result-actions" aria-label="Verdict actions">
+          <button class="verdict-action appeal-action" id="appeal-button" type="button">
+            <span>⚖</span><b>BUT IT'S LITERALLY TRASH</b>
+          </button>
+          <button class="verdict-action" id="certificate-button" type="button">
+            <span>▤</span><b>OFFICIAL CERTIFICATE</b>
+          </button>
+          <button class="verdict-action" id="result-hall-button" type="button">
+            <span>✦</span><b>HALL OF POTENTIAL</b>
+          </button>
+        </div>
+
+        <button class="button button-primary" id="judge-button" type="button">
+          <span id="judge-button-label">ASK BINJAMIN</span>
+          <span class="primary-arrow">↗</span>
+        </button>
+      </section>
+    </main>
+
+    <aside class="demo-dock is-closed" aria-label="Demo controls">
+      <button class="dock-tab" id="dock-toggle" type="button" aria-expanded="false">
+        <span class="dock-pulse"></span>
+        DEMO DECK
+        <span class="dock-chevron">⌄</span>
+      </button>
+      <div class="dock-body" id="dock-body">
+        <div class="mode-switch" role="group" aria-label="Judging mode">
+          <button class="mode-button is-active" data-mode="demo" type="button">SCRIPTED</button>
+          <button class="mode-button" data-mode="live" type="button">LIVE AI</button>
+        </div>
+
+        <div class="demo-props">
+          <span class="dock-label">IN CASE OF SILENCE, PRESS:</span>
+          <button class="prop-button" data-demo="banana" type="button">
+            <kbd>1</kbd><span>🍌</span>BANANA
+          </button>
+          <button class="prop-button" data-demo="resume" type="button">
+            <kbd>2</kbd><span>📄</span>RÉSUMÉ
+          </button>
+          <button class="prop-button" data-demo="iphone" type="button">
+            <kbd>3</kbd><span>📱</span>IPHONE
+          </button>
+          <button class="prop-button prop-random" data-demo="random" type="button">
+            <kbd>4</kbd><span>?</span>CHAOS
+          </button>
+          <button class="prop-button live-wildcard" id="live-wildcard" type="button">
+            <kbd>L</kbd><span>◉</span>JUDGE'S OBJECT
+          </button>
+        </div>
+
+        <div class="hardware-controls">
+          <button class="utility-button" id="sound-toggle" type="button" aria-pressed="true">
+            <span>◖))</span><b>SOUND ON</b>
+          </button>
+          <button class="utility-button" id="serial-button" type="button">
+            <span>⌁</span><b>CONNECT BIN</b>
+          </button>
+          <button class="utility-button" id="presenter-toggle" type="button" aria-pressed="false">
+            <span>▣</span><b>PRESENTER</b>
+          </button>
+          <span class="hardware-status" id="hardware-status">
+            <i></i>MOTOR: DRAMATIC REENACTMENT
+          </span>
+        </div>
+      </div>
+    </aside>
+
+    <dialog
+      class="api-key-modal"
+      id="api-key-modal"
+      aria-labelledby="api-key-title"
+      aria-describedby="api-key-help"
+    >
+      <div class="modal-sheet api-key-sheet">
+        <div class="modal-stripe">PRIVATE BRAIN CEREMONY · NO MUNICIPAL RECORD CREATED</div>
+        <button class="modal-close" type="button" data-close-dialog="api-key-modal" aria-label="Close API key settings">×</button>
+        <span class="modal-kicker">OPTIONAL LIVE VISION</span>
+        <h2 id="api-key-title">PICK BINJAMIN'S BRAIN.</h2>
+        <p class="modal-intro" id="api-key-help">
+          Choose a provider, lend Binjamin its key, and receive one completely biased judgment.
+        </p>
+        <form class="api-key-form" id="api-key-form" novalidate>
+          <fieldset class="provider-picker">
+            <legend>AI PROVIDER</legend>
+            <div class="provider-options" data-testid="provider-options">
+              <label class="provider-option">
+                <input type="radio" name="ai-provider" value="openrouter" data-testid="provider-openrouter" checked />
+                <span><strong>OPENROUTER</strong><small>THE BRAIN BUFFET</small><em>GEMINI 3.1 FLASH LITE</em></span>
+              </label>
+              <label class="provider-option">
+                <input type="radio" name="ai-provider" value="openai" data-testid="provider-openai" />
+                <span><strong>OPENAI</strong><small>PREMIUM MUNICIPAL THOUGHTS</small><em>GPT-5.6 LUNA</em></span>
+              </label>
+              <label class="provider-option">
+                <input type="radio" name="ai-provider" value="xai" data-testid="provider-xai" />
+                <span><strong>GROK</strong><small>UNLICENSED BIN CONFIDENCE</small><em>GROK 4.3</em></span>
+              </label>
+              <label class="provider-option">
+                <input type="radio" name="ai-provider" value="anthropic" data-testid="provider-anthropic" />
+                <span><strong>CLAUDE</strong><small>ETHICALLY CONCERNED REFUSE</small><em>HAIKU 4.5</em></span>
+              </label>
+            </div>
+          </fieldset>
+          <div class="api-key-field">
+            <label for="api-key-input" id="api-key-input-label">OPENROUTER API KEY</label>
+            <div class="api-key-input-row">
+              <input
+                id="api-key-input"
+                data-testid="api-key-input"
+                type="password"
+                maxlength="512"
+                placeholder="sk-or-v1-…"
+                autocomplete="off"
+                autocapitalize="none"
+                spellcheck="false"
+                aria-describedby="api-key-help api-key-status"
+              />
+              <button
+                class="api-key-reveal"
+                id="api-key-reveal"
+                type="button"
+                aria-label="Show API key"
+                aria-pressed="false"
+              >SHOW</button>
+            </div>
+          </div>
+          <p class="api-key-privacy">
+            MEMORY ONLY · REFRESH TO FORGET · PROXIED ONLY TO <b id="api-key-provider-name">OPENROUTER</b> · PROVIDER TERMS APPLY
+          </p>
+          <p class="api-key-status" id="api-key-status" role="status">NO SESSION KEY LOADED</p>
+          <div class="api-key-controls">
+            <button class="court-button" id="api-key-clear" type="button">CLEAR KEY</button>
+            <button class="court-button court-button-submit" id="api-key-save" data-testid="api-key-save" type="submit">
+              USE FOR THIS TAB ↗
+            </button>
+          </div>
+        </form>
+        <a class="api-key-link" id="api-key-link" href="https://openrouter.ai/settings/keys" target="_blank" rel="noreferrer">
+          CREATE OPENROUTER KEY ↗
+        </a>
+      </div>
+    </dialog>
+
+    <dialog class="court-modal" id="appeal-modal" aria-labelledby="appeal-title">
+      <div class="modal-sheet">
+        <div class="modal-stripe">SUPREME COURT OF REFUSE · EMERGENCY SESSION</div>
+        <button class="modal-close" type="button" data-close-dialog="appeal-modal" aria-label="Close appeal">×</button>
+        <span class="modal-kicker">CASE <b id="appeal-case">NCD-000000</b></span>
+        <h2 id="appeal-title">BUT IT'S LITERALLY TRASH.</h2>
+        <p class="modal-intro">Binjamin will now hear one completely futile appeal.</p>
+        <label class="appeal-field" for="appeal-input">
+          <span>STATE YOUR CASE</span>
+          <textarea id="appeal-input" maxlength="320" rows="4" placeholder="Your Honor, this banana peel is decomposing on my hand…"></textarea>
+        </label>
+        <div class="appeal-controls">
+          <button class="court-button court-button-mic" id="appeal-mic" type="button"><span>◉</span> DICTATE</button>
+          <button class="court-button court-button-submit" id="appeal-submit" type="button">FILE THIS BAD DECISION ↗</button>
+        </div>
+        <p class="appeal-status" id="appeal-status" role="status" aria-live="polite"></p>
+        <section class="court-ruling" id="court-ruling" hidden aria-live="polite">
+          <span>FINAL · EMOTIONALLY BINDING</span>
+          <h3 id="ruling-title">APPEAL DENIED</h3>
+          <blockquote id="ruling-response"></blockquote>
+          <dl>
+            <div><dt>NEW JOB</dt><dd id="ruling-job"></dd></div>
+            <div><dt>SENTENCE</dt><dd id="ruling-sentence"></dd></div>
+            <div><dt>FINE</dt><dd id="ruling-fine"></dd></div>
+          </dl>
+        </section>
+      </div>
+    </dialog>
+
+    <dialog class="certificate-modal" id="certificate-modal" aria-labelledby="certificate-title">
+      <div class="certificate" id="certificate">
+        <button class="modal-close" type="button" data-close-dialog="certificate-modal" aria-label="Close certificate">×</button>
+        <div class="certificate-seal">NCD<br /><span>✓</span></div>
+        <span class="certificate-overline">DEPARTMENT OF SECOND CHANCES</span>
+        <h2 id="certificate-title">CERTIFICATE OF REHABILITATION</h2>
+        <p>This legally meaningless document certifies that</p>
+        <strong id="certificate-object">BANANA PEEL</strong>
+        <p>shall henceforth be recognized as</p>
+        <strong class="certificate-reframe" id="certificate-reframe">RETIRED ATHLETE</strong>
+        <div class="certificate-details">
+          <span>CASE <b id="certificate-case">NCD-000000</b></span>
+          <span>POTENTIAL <b id="certificate-potential">98%</b></span>
+          <span>ISSUED <b id="certificate-date">JUL 12 2026</b></span>
+        </div>
+        <p class="certificate-fineprint" id="certificate-copy">Cleared for immediate return to society, compost, or middle management.</p>
+        <div class="certificate-signatures">
+          <div><span>Binjamin</span><small>CHIEF REFUSE OFFICER</small></div>
+          <button class="court-button" id="print-certificate" type="button">PRINT RECEIPT ▤</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="hall-modal" id="hall-modal" aria-labelledby="hall-title">
+      <div class="modal-sheet hall-sheet">
+        <div class="modal-stripe">NO CAN DO™ · IMPACT REPORT · DEFINITELY AUDITED</div>
+        <button class="modal-close" type="button" data-close-dialog="hall-modal" aria-label="Close Hall of Potential">×</button>
+        <span class="modal-kicker">PUBLIC RECORD</span>
+        <h2 id="hall-title">HALL OF POTENTIAL</h2>
+        <div class="impact-grid">
+          <div><strong id="impact-saved">0</strong><span>OBJECTS SAVED</span></div>
+          <div><strong id="impact-potential">0%</strong><span>AVG. DELUSION</span></div>
+          <div><strong id="impact-hours">0</strong><span>THERAPY HOURS CREATED</span></div>
+        </div>
+        <div class="hall-list" id="hall-list"></div>
+        <button class="court-button clear-history" id="clear-history" type="button">SHRED PUBLIC RECORDS</button>
+      </div>
+    </dialog>
+
+    <div class="confetti-layer" id="confetti-layer" aria-hidden="true"></div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <footer>
+      <span>NO CAN DO™ · FEAT. BINJAMIN</span>
+      <p>Saving the planet by making disposal emotionally exhausting.</p>
+      <span>HAHAHACK 2026</span>
+    </footer>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

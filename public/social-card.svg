@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">NO CAN DO — Featuring Binjamin</title>
+  <desc id="description">The AI trash can that will not take your crap.</desc>
+  <defs>
+    <pattern id="grid" width="26" height="26" patternUnits="userSpaceOnUse">
+      <path d="M26 0H0V26" fill="none" stroke="#171713" stroke-opacity=".07" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="150%" height="150%">
+      <feDropShadow dx="10" dy="10" stdDeviation="0" flood-color="#171713"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="#f3efe7"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <path d="M0 72H1200" stroke="#171713" stroke-width="3"/>
+
+  <g transform="translate(38 18)">
+    <circle cx="26" cy="26" r="24" fill="#c9ff4a" stroke="#171713" stroke-width="3"/>
+    <ellipse cx="19" cy="24" rx="4" ry="7" fill="#171713"/>
+    <ellipse cx="33" cy="24" rx="4" ry="7" fill="#171713"/>
+    <text x="64" y="25" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="900" letter-spacing="-1.5" fill="#171713">NO CAN DO™</text>
+    <text x="65" y="42" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="8" font-weight="700" letter-spacing="1" fill="#171713">FEATURING BINJAMIN, C.R.O.</text>
+  </g>
+
+  <g transform="translate(54 118)">
+    <rect width="263" height="34" fill="#c9ff4a" stroke="#171713" stroke-width="2"/>
+    <text x="14" y="22" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="10" font-weight="700" letter-spacing="1" fill="#171713">DEPT. OF SECOND CHANCES</text>
+
+    <text x="0" y="112" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="900" letter-spacing="-6" fill="#171713">THE AI TRASH CAN</text>
+    <rect x="-2" y="132" width="562" height="80" fill="#c9ff4a" transform="rotate(-1 279 172)"/>
+    <text x="0" y="200" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="900" letter-spacing="-6" fill="#171713">THAT WON'T TAKE</text>
+    <text x="0" y="284" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="900" letter-spacing="-6" fill="#171713">YOUR CRAP.</text>
+
+    <text x="2" y="344" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#171713">Present an object. Receive judgment.</text>
+    <text x="2" y="372" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#171713">Lose the right to throw it away.</text>
+    <text x="2" y="436" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11" font-weight="700" letter-spacing="1" fill="#5e5c55">NO-CAN-DO.VERCEL.APP · EMOTIONALLY BINDING</text>
+  </g>
+
+  <g transform="translate(738 105)" filter="url(#shadow)">
+    <rect width="402" height="468" fill="#fffdf7" stroke="#171713" stroke-width="3"/>
+    <rect width="402" height="37" fill="#c9ff4a" stroke="#171713" stroke-width="3"/>
+    <text x="15" y="24" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="9" font-weight="700" letter-spacing="1" fill="#171713">CASE NCD-000001</text>
+    <text x="388" y="24" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="8" font-weight="700" letter-spacing="1" fill="#171713">DISPOSAL DENIED</text>
+
+    <circle cx="268" cy="220" r="145" fill="#c9ff4a" opacity=".42"/>
+    <circle cx="268" cy="220" r="111" fill="none" stroke="#171713" stroke-opacity=".13" stroke-width="2" stroke-dasharray="6 6"/>
+
+    <g transform="translate(148 148)">
+      <path d="M18 70H224L209 278H35Z" fill="#8f9e94" stroke="#171713" stroke-width="6" stroke-linejoin="round"/>
+      <path d="M0 45H242V105H0Z" fill="#aab8af" stroke="#171713" stroke-width="6" stroke-linejoin="round"/>
+      <path d="M82 45V12H160V45" fill="#9caba2" stroke="#171713" stroke-width="6" stroke-linejoin="round"/>
+      <ellipse cx="85" cy="76" rx="19" ry="16" fill="#fffdf7" stroke="#171713" stroke-width="5"/>
+      <ellipse cx="158" cy="76" rx="19" ry="16" fill="#fffdf7" stroke="#171713" stroke-width="5"/>
+      <circle cx="88" cy="76" r="6" fill="#171713"/>
+      <circle cx="155" cy="76" r="6" fill="#171713"/>
+      <path d="M105 94H137" stroke="#171713" stroke-width="5"/>
+      <path d="M70 121V256M121 121V262M172 121V256" stroke="#171713" stroke-opacity=".14" stroke-width="3"/>
+      <rect x="66" y="167" width="110" height="69" fill="#c9ff4a" stroke="#171713" stroke-width="4"/>
+      <text x="121" y="194" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="900" fill="#ff7048">♥</text>
+      <text x="121" y="214" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="900" fill="#171713">BINJAMIN</text>
+      <text x="121" y="225" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="5" font-weight="700" fill="#171713">SECOND CHANCES</text>
+    </g>
+
+    <g transform="translate(23 62)">
+      <path d="M0 0H281V105H0Z" fill="#fffdf7" stroke="#171713" stroke-width="3"/>
+      <path d="M281 65L306 83L281 91Z" fill="#fffdf7" stroke="#171713" stroke-width="3" stroke-linejoin="round"/>
+      <text x="15" y="25" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="9" font-weight="700" letter-spacing="1" fill="#4355e8">BINJAMIN SAYS</text>
+      <text x="15" y="52" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="900" letter-spacing="-.5" fill="#171713">“THAT ISN'T GARBAGE.</text>
+      <text x="15" y="77" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="900" letter-spacing="-.5" fill="#171713">THAT'S MIDDLE MANAGEMENT.”</text>
+    </g>
+
+    <g transform="translate(304 370) rotate(9)">
+      <circle cx="38" cy="38" r="38" fill="#ff8db4" stroke="#171713" stroke-width="4"/>
+      <text x="38" y="35" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="9" font-weight="800" fill="#171713">100%</text>
+      <text x="38" y="49" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="8" font-weight="800" fill="#171713">JUDGMENTAL</text>
+    </g>
+  </g>
+</svg>

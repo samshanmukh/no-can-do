@@ -12,7 +12,7 @@ No install or build step is required. Use Node 22:
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Camera and Web Serial permissions work on localhost.
+Open [http://localhost:3000](http://localhost:3000) for the product landing page, then choose **TRY THE BIN** to launch the interactive experience at [http://localhost:3000/demo.html](http://localhost:3000/demo.html). Camera and Web Serial permissions work on localhost. Installing the PWA opens directly into the demo.
 
 The app starts in **Scripted** mode. Use the on-screen demo deck or keyboard shortcuts:
 
@@ -67,7 +67,7 @@ The local server binds to loopback, keeps host keys server-side, rejects cross-o
 
 ## Deploy on Vercel
 
-Vercel serves the experience from `public/` and deploys the handlers in `api/` as Node.js Functions. Pushes to `main` deploy automatically when the project has Git integration configured.
+Vercel serves the marketing page at `/`, the complete interactive experience at `/demo.html`, and the handlers in `api/` as Node.js Functions. Pushes to `main` deploy automatically when the project has Git integration configured.
 
 The safe public default is browser BYOK through **ADD KEY**. For protected host-funded judgments, add `ALLOW_HOST_AI=true`, `AI_PROVIDER`, and that provider's `*_API_KEY` plus an optional `*_MODEL` in Vercel project settings. Without a browser key or explicitly enabled host key, the deployed app still runs its complete scripted demo and reports that live AI is unavailable.
 

@@ -1,5 +1,16 @@
-const CACHE_NAME = "no-can-do-v6";
-const CORE_ASSETS = ["/", "/index.html", "/styles.css", "/app.js", "/manifest.webmanifest", "/icon.svg"];
+const CACHE_NAME = "no-can-do-v7";
+const CORE_ASSETS = [
+  "/",
+  "/index.html",
+  "/landing.css",
+  "/landing.js",
+  "/demo.html",
+  "/styles.css",
+  "/app.js",
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/social-card.jpg",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)));
@@ -29,7 +40,11 @@ self.addEventListener("fetch", (event) => {
       })
       .catch(async () => {
         const cached = await caches.match(event.request);
-        return cached || caches.match("/index.html");
+        if (cached) return cached;
+        if (event.request.mode === "navigate") {
+          return caches.match(url.pathname === "/demo.html" ? "/demo.html" : "/index.html");
+        }
+        return Response.error();
       }),
   );
 });

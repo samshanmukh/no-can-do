@@ -532,9 +532,9 @@ describe("direct provider request contracts", () => {
 
 describe("browser deployment contract", () => {
   it("keeps the provider catalog and memory-only promise aligned", async () => {
-    const [app, html, readme, environment, serviceWorker] = await Promise.all([
+    const [app, demo, readme, environment, serviceWorker] = await Promise.all([
       readFile(new URL("../public/app.js", import.meta.url), "utf8"),
-      readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+      readFile(new URL("../public/demo.html", import.meta.url), "utf8"),
       readFile(new URL("../README.md", import.meta.url), "utf8"),
       readFile(new URL("../.env.example", import.meta.url), "utf8"),
       readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
@@ -543,12 +543,53 @@ describe("browser deployment contract", () => {
       assert.match(app, new RegExp(profile.defaultModel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
       assert.match(readme, new RegExp(profile.defaultModel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
       assert.match(environment, new RegExp(profile.defaultModel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-      assert.match(html, new RegExp(`value=["']${provider}["']`));
+      assert.match(demo, new RegExp(`value=["']${provider}["']`));
     }
     assert.equal((app.match(/localStorage\.setItem/g) || []).length, 1);
     assert.match(app, /localStorage\.setItem\(HISTORY_KEY/);
+    assert.match(serviceWorker, /no-can-do-v7/);
+    assert.match(serviceWorker, /"\/demo\.html"/);
+    assert.match(serviceWorker, /"\/landing\.css"/);
     assert.match(serviceWorker, /request\.method !== "GET"/);
     assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)/);
+    assert.match(serviceWorker, /event\.request\.mode === "navigate"/);
+  });
+
+  it("keeps the marketing page isolated, accessible, and discoverable", async () => {
+    const [landing, demo, landingCss, landingJs, manifest, robots, sitemap] = await Promise.all([
+      readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+      readFile(new URL("../public/demo.html", import.meta.url), "utf8"),
+      readFile(new URL("../public/landing.css", import.meta.url), "utf8"),
+      readFile(new URL("../public/landing.js", import.meta.url), "utf8"),
+      readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
+      readFile(new URL("../public/robots.txt", import.meta.url), "utf8"),
+      readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8"),
+    ]);
+    assert.equal((landing.match(/<h1\b/g) || []).length, 1);
+    assert.match(landing, /href="#landing-main"/);
+    assert.match(landing, /<main id="landing-main" tabindex="-1">/);
+    assert.match(landing, /href="\/demo\.html"/);
+    assert.match(landing, /rel="canonical" href="https:\/\/no-can-do\.vercel\.app\/"/);
+    assert.match(landing, /property="og:title"/);
+    assert.match(landing, /property="og:image" content="https:\/\/no-can-do\.vercel\.app\/social-card\.jpg"/);
+    assert.match(landing, /property="og:image:alt"/);
+    assert.match(landing, /name="twitter:card"/);
+    assert.match(landing, /name="twitter:image"/);
+    assert.match(landing, /src="\/landing\.js"/);
+    assert.doesNotMatch(landing, /src="\/app\.js"/);
+    assert.match(demo, /rel="canonical" href="https:\/\/no-can-do\.vercel\.app\/demo\.html"/);
+    assert.match(demo, /name="robots" content="noindex,follow"/);
+    assert.match(demo, /href="\/" aria-label="NO CAN DO landing page"/);
+    assert.match(demo, /src="\/app\.js"/);
+    assert.match(landingCss, /a:focus-visible/);
+    assert.match(landingCss, /prefers-reduced-motion: reduce/);
+    assert.match(landingJs, /serviceWorker\.register\("\/sw\.js"\)/);
+    const parsedManifest = JSON.parse(manifest);
+    assert.equal(parsedManifest.id, "/");
+    assert.equal(parsedManifest.scope, "/");
+    assert.equal(parsedManifest.start_url, "/demo.html");
+    assert.match(robots, /Sitemap: https:\/\/no-can-do\.vercel\.app\/sitemap\.xml/);
+    assert.match(sitemap, /<loc>https:\/\/no-can-do\.vercel\.app\/<\/loc>/);
   });
 });
 
@@ -569,12 +610,29 @@ describe("local server", () => {
     });
   });
 
-  it("serves the experience", async () => {
-    const response = await fetch(baseUrl);
-    assert.equal(response.status, 200);
-    assert.match(await response.text(), /NO CAN DO/);
-    assert.equal(response.headers.get("x-content-type-options"), "nosniff");
-    assert.match(response.headers.get("content-security-policy"), /default-src 'self'/);
+  it("serves the landing page and isolated interactive demo", async () => {
+    const [landingResponse, demoResponse, landingHead, demoHead] = await Promise.all([
+      fetch(baseUrl),
+      fetch(`${baseUrl}/demo.html`),
+      fetch(baseUrl, { method: "HEAD" }),
+      fetch(`${baseUrl}/demo.html`, { method: "HEAD" }),
+    ]);
+    const [landing, demo] = await Promise.all([landingResponse.text(), demoResponse.text()]);
+    assert.equal(landingResponse.status, 200);
+    assert.equal(demoResponse.status, 200);
+    assert.match(landingResponse.headers.get("content-type"), /text\/html/);
+    assert.match(demoResponse.headers.get("content-type"), /text\/html/);
+    assert.match(landing, /THE TRASH CAN/);
+    assert.match(landing, /href="\/demo\.html"/);
+    assert.doesNotMatch(landing, /src="\/app\.js"/);
+    assert.match(demo, /PICK BINJAMIN'S BRAIN/);
+    assert.match(demo, /src="\/app\.js"/);
+    assert.equal(landingHead.status, 200);
+    assert.equal(demoHead.status, 200);
+    assert.equal(await landingHead.text(), "");
+    assert.equal(await demoHead.text(), "");
+    assert.equal(landingResponse.headers.get("x-content-type-options"), "nosniff");
+    assert.match(landingResponse.headers.get("content-security-policy"), /default-src 'self'/);
   });
 
   it("reports a bounded health check", async () => {
@@ -717,9 +775,26 @@ describe("local server", () => {
   });
 
   it("serves offline assets and handles HEAD without a body", async () => {
-    const manifest = await fetch(`${baseUrl}/manifest.webmanifest`);
+    const [manifest, landingCss, landingJs, robots, sitemap, socialCard] = await Promise.all([
+      fetch(`${baseUrl}/manifest.webmanifest`),
+      fetch(`${baseUrl}/landing.css`),
+      fetch(`${baseUrl}/landing.js`),
+      fetch(`${baseUrl}/robots.txt`),
+      fetch(`${baseUrl}/sitemap.xml`),
+      fetch(`${baseUrl}/social-card.jpg`),
+    ]);
     assert.equal(manifest.status, 200);
     assert.match(manifest.headers.get("content-type"), /manifest/);
+    assert.equal(landingCss.status, 200);
+    assert.match(landingCss.headers.get("content-type"), /text\/css/);
+    assert.equal(landingJs.status, 200);
+    assert.match(landingJs.headers.get("content-type"), /javascript/);
+    assert.equal(robots.status, 200);
+    assert.match(robots.headers.get("content-type"), /text\/plain/);
+    assert.equal(sitemap.status, 200);
+    assert.match(sitemap.headers.get("content-type"), /(?:xml|octet-stream)/);
+    assert.equal(socialCard.status, 200);
+    assert.match(socialCard.headers.get("content-type"), /image\/jpeg/);
 
     const head = await fetch(`${baseUrl}/app.js`, { method: "HEAD" });
     assert.equal(head.status, 200);
