@@ -5,11 +5,13 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("./public", import.meta.url));
 export const DEFAULT_MODEL = "google/gemini-3.1-flash-lite";
+export const CLIENT_OPENROUTER_KEY_HEADER = "authorization";
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const API_TIMEOUT_MS = 8_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 40;
 const MAX_IN_FLIGHT = 3;
+const CLIENT_OPENROUTER_KEY_PATTERN = /^sk-or-v1-[A-Za-z0-9._~+/-]+=*$/;
 
 export const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self'",
@@ -154,6 +156,23 @@ export function extractOutputText(response) {
   return "";
 }
 
+export function parseClientOpenRouterKey(value) {
+  if (value === undefined || value === null || value === "") return "";
+  if (Array.isArray(value)) {
+    const error = new Error("OpenRouter authorization was invalid.");
+    error.statusCode = 401;
+    throw error;
+  }
+  const match = /^Bearer ([^\s,]+)$/i.exec(String(value));
+  const key = match?.[1] || "";
+  if (key.length < 20 || key.length > 512 || !CLIENT_OPENROUTER_KEY_PATTERN.test(key)) {
+    const error = new Error("OpenRouter authorization was invalid.");
+    error.statusCode = 401;
+    throw error;
+  }
+  return key;
+}
+
 function validateStructuredValue(value, schema, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`The model ${label} was not an object.`);
@@ -245,8 +264,8 @@ function sendJson(response, statusCode, body) {
   response.end(JSON.stringify(body));
 }
 
-async function requestStructuredOutput({ instructions, userContent, schema, schemaName, signal }) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+async function requestStructuredOutput({ instructions, userContent, schema, schemaName, signal, clientApiKey }) {
+  const apiKey = clientApiKey || process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     const error = new Error("OpenRouter is not configured. Scripted genius remains available.");
     error.statusCode = 503;
@@ -299,14 +318,24 @@ async function requestStructuredOutput({ instructions, userContent, schema, sche
   const payload = await apiResponse.json().catch(() => ({}));
   if (!apiResponse.ok) {
     console.error(`[OpenRouter ${apiResponse.status}] ${payload?.error?.code || "upstream_error"}`);
-    const error = new Error("Live AI could not hear this case. Scripted precedent is still available.");
-    error.statusCode = apiResponse.status === 429 ? 503 : 502;
+    const upstreamMessages = {
+      401: "OpenRouter rejected that API key.",
+      402: "That OpenRouter key needs credits.",
+      403: "That OpenRouter key cannot access this model.",
+    };
+    const error = new Error(
+      upstreamMessages[apiResponse.status]
+      || "Live AI could not hear this case. Scripted precedent is still available.",
+    );
+    error.statusCode = upstreamMessages[apiResponse.status]
+      ? apiResponse.status
+      : apiResponse.status === 429 ? 503 : 502;
     throw error;
   }
   return payload;
 }
 
-export async function judgeObject(body, signal) {
+export async function judgeObject(body, signal, { clientApiKey = "" } = {}) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     const error = new Error("Request body must be an object.");
     error.statusCode = 400;
@@ -341,6 +370,7 @@ export async function judgeObject(body, signal) {
     schema: VERDICT_SCHEMA,
     schemaName: "binjamin_verdict",
     signal,
+    clientApiKey,
   });
 
   try {
@@ -351,7 +381,7 @@ export async function judgeObject(body, signal) {
   }
 }
 
-export async function appealVerdict(body, signal) {
+export async function appealVerdict(body, signal, { clientApiKey = "" } = {}) {
   const verdict = body?.verdict;
   const appeal = typeof body?.appeal === "string" ? body.appeal.trim().slice(0, 320) : "";
   if (!verdict || typeof verdict !== "object" || Array.isArray(verdict) || !appeal) {
@@ -372,6 +402,7 @@ export async function appealVerdict(body, signal) {
     schema: APPEAL_SCHEMA,
     schemaName: "supreme_court_of_refuse_ruling",
     signal,
+    clientApiKey,
   });
   try {
     return { ...parseAppealResponse(payload), model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL };
@@ -470,6 +501,9 @@ export function createServer() {
             throw error;
           }
         }
+        const clientApiKey = parseClientOpenRouterKey(
+          request.headers[CLIENT_OPENROUTER_KEY_HEADER],
+        );
 
         const now = Date.now();
         const client = request.socket.remoteAddress || "local";
@@ -495,8 +529,8 @@ export function createServer() {
         try {
           const payload = await runTimedOperation(request, response, (signal) => (
             url.pathname === "/api/judge"
-              ? judgeObject(body, signal)
-              : appealVerdict(body, signal)
+              ? judgeObject(body, signal, { clientApiKey })
+              : appealVerdict(body, signal, { clientApiKey })
           ));
           if (!response.destroyed) sendJson(response, 200, payload);
         } finally {

@@ -30,9 +30,20 @@
         <button class="impact-button" id="hall-button" type="button" aria-label="Open Hall of Potential">
           <strong id="saved-count">0</strong><span>OBJECTS<br />SAVED</span>
         </button>
+        <button
+          class="api-key-button"
+          id="api-key-button"
+          data-testid="api-key-button"
+          type="button"
+          aria-label="Open OpenRouter API key settings"
+          aria-haspopup="dialog"
+          aria-controls="api-key-modal"
+        >
+          <span aria-hidden="true">◇</span><b id="api-key-button-label">ADD KEY</b>
+        </button>
         <div class="system-status" aria-label="System status">
-          <span class="status-dot" id="api-dot"></span>
-          <span id="api-label">CHECKING VIBES</span>
+          <span class="status-dot" id="api-dot" aria-hidden="true"></span>
+          <span id="api-label" aria-live="polite">CHECKING VIBES</span>
         </div>
       </div>
     </header>
@@ -243,6 +254,59 @@
         </div>
       </div>
     </aside>
+
+    <dialog
+      class="api-key-modal"
+      id="api-key-modal"
+      aria-labelledby="api-key-title"
+      aria-describedby="api-key-help"
+    >
+      <div class="modal-sheet api-key-sheet">
+        <div class="modal-stripe">PRIVATE KEY CEREMONY · NO MUNICIPAL RECORD CREATED</div>
+        <button class="modal-close" type="button" data-close-dialog="api-key-modal" aria-label="Close API key settings">×</button>
+        <span class="modal-kicker">OPTIONAL LIVE VISION</span>
+        <h2 id="api-key-title">LEND BINJAMIN A BRAIN.</h2>
+        <p class="modal-intro" id="api-key-help">
+          Paste an OpenRouter key to unlock live object judgment without touching Vercel settings.
+        </p>
+        <form class="api-key-form" id="api-key-form" novalidate>
+          <div class="api-key-field">
+            <label for="api-key-input">OPENROUTER API KEY</label>
+            <div class="api-key-input-row">
+              <input
+                id="api-key-input"
+                data-testid="api-key-input"
+                type="password"
+                maxlength="512"
+                placeholder="sk-or-v1-…"
+                autocomplete="off"
+                autocapitalize="none"
+                spellcheck="false"
+                aria-describedby="api-key-help api-key-status"
+              />
+              <button
+                class="api-key-reveal"
+                id="api-key-reveal"
+                type="button"
+                aria-label="Show API key"
+                aria-pressed="false"
+              >SHOW</button>
+            </div>
+          </div>
+          <p class="api-key-privacy">MEMORY ONLY · REFRESH TO FORGET · SENT ONLY WITH LIVE AI REQUESTS</p>
+          <p class="api-key-status" id="api-key-status" role="status">NO SESSION KEY LOADED</p>
+          <div class="api-key-controls">
+            <button class="court-button" id="api-key-clear" type="button">CLEAR KEY</button>
+            <button class="court-button court-button-submit" id="api-key-save" data-testid="api-key-save" type="submit">
+              USE FOR THIS TAB ↗
+            </button>
+          </div>
+        </form>
+        <a class="api-key-link" href="https://openrouter.ai/settings/keys" target="_blank" rel="noreferrer">
+          CREATE AN OPENROUTER KEY ↗
+        </a>
+      </div>
+    </dialog>
 
     <dialog class="court-modal" id="appeal-modal" aria-labelledby="appeal-title">
       <div class="modal-sheet">

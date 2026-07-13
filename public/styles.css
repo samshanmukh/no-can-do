@@ -177,6 +177,34 @@ label[for]:focus-visible {
   letter-spacing: 0.04em;
 }
 
+.api-key-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--ink);
+  background: var(--pink);
+  color: var(--ink);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 7px;
+  letter-spacing: 0.05em;
+}
+
+.api-key-button:hover {
+  box-shadow: 3px 3px 0 var(--ink);
+  transform: translate(-1px, -1px);
+}
+
+.api-key-button.is-loaded {
+  background: var(--acid);
+}
+
+.api-key-button span {
+  font-size: 14px;
+}
+
 .status-dot,
 .dock-pulse {
   width: 8px;
@@ -1349,7 +1377,7 @@ body[data-state="result"] .result-actions {
 
 dialog {
   width: min(680px, calc(100vw - 30px));
-  max-height: calc(100vh - 30px);
+  max-height: calc(100dvh - 30px);
   margin: auto;
   padding: 0;
   overflow: auto;
@@ -1434,6 +1462,92 @@ dialog[open] {
   margin: 16px 0 24px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.api-key-modal {
+  width: min(620px, calc(100vw - 30px));
+}
+
+.api-key-sheet .modal-stripe {
+  background: var(--acid);
+}
+
+.api-key-field > label {
+  display: block;
+  margin-bottom: 7px;
+  font-family: var(--mono);
+  font-size: 7px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.api-key-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+}
+
+.api-key-input-row input {
+  min-width: 0;
+  height: 48px;
+  padding: 0 14px;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: #fffdf7;
+  color: var(--ink);
+  font: 600 14px/1 var(--mono);
+}
+
+.api-key-reveal {
+  min-width: 68px;
+  border: 2px solid var(--ink);
+  border-left: 0;
+  background: var(--paper-deep);
+  color: var(--ink);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 7px;
+  font-weight: 500;
+}
+
+.api-key-privacy {
+  margin: 9px 0 14px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 7px;
+  line-height: 1.5;
+}
+
+.api-key-status {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ink);
+  background: #fffdf7;
+  font-family: var(--mono);
+  font-size: 8px;
+}
+
+.api-key-status.is-ready {
+  background: var(--acid);
+}
+
+.api-key-status.is-error {
+  background: var(--pink);
+}
+
+.api-key-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.api-key-link {
+  display: inline-block;
+  margin-top: 18px;
+  color: var(--blue);
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 500;
+  text-underline-offset: 3px;
 }
 
 .appeal-field span {
@@ -1830,7 +1944,8 @@ body.is-presenter .panel {
 
 body.is-presenter .camera-actions,
 body.is-presenter .hint-field,
-body.is-presenter .privacy-note {
+body.is-presenter .privacy-note,
+body.is-presenter .api-key-reveal {
   display: none;
 }
 
@@ -2069,6 +2184,44 @@ footer p {
 @media (max-width: 540px) {
   .system-status {
     font-size: 7px;
+  }
+
+  #api-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .header-actions {
+    gap: 8px;
+  }
+
+  .api-key-button {
+    min-width: 42px;
+    padding: 0 7px;
+  }
+
+  .api-key-button b {
+    font-size: 0;
+  }
+
+  .api-key-button b::after {
+    content: "KEY";
+    font-size: 7px;
+  }
+
+  .api-key-controls {
+    flex-direction: column-reverse;
+  }
+
+  .api-key-input-row input {
+    font-size: 16px;
   }
 
   .brand {

@@ -33,7 +33,9 @@ Every verdict receives a case number and is saved locally in the Hall of Potenti
 
 ## Optional live AI vision
 
-The scripted mode is fully local. To make audience objects unpredictable, copy the environment example and add an API key:
+The scripted mode is fully local. For the fastest demo setup, click **ADD KEY** in the header and paste an OpenRouter API key. The key is kept only in the current page's memory, sent through the same-origin `/api` proxy only for live judgments and appeals, and forgotten on refresh or tab close. It is never written to local storage, cookies, URLs, or the service-worker cache. A dedicated, low-limit demo key is recommended.
+
+For a shared deployment that should work without each visitor bringing a key, copy the environment example and add a host-side key:
 
 ```bash
 cp .env.example .env
@@ -44,7 +46,7 @@ OPENROUTER_API_KEY=your_key_here
 OPENROUTER_MODEL=google/gemini-3.1-flash-lite
 ```
 
-Restart the server and select **Live AI**. The key remains server-side. Camera frames are sent once per judgment, and each OpenRouter request requires a zero-data-retention endpoint and denies provider data collection; the app does not intentionally save frames. See OpenRouter's [ZDR guide](https://openrouter.ai/docs/guides/features/zdr).
+Restart the server and select **Live AI**. Environment keys remain server-side; a temporary browser key is forwarded only for that request and takes precedence without changing server state. Camera frames are sent once per judgment, and each OpenRouter request requires a zero-data-retention endpoint and denies provider data collection; the app does not intentionally save frames. See OpenRouter's [ZDR guide](https://openrouter.ai/docs/guides/features/zdr).
 
 The server uses OpenRouter's Chat Completions API with a base64 image input and strict JSON-schema output. The default is the low-latency, vision-capable `google/gemini-3.1-flash-lite`, and any compatible model can be selected with `OPENROUTER_MODEL`. See OpenRouter's official [image input guide](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding) and [structured outputs guide](https://openrouter.ai/docs/guides/features/structured-outputs).
 
@@ -56,7 +58,7 @@ The server binds to loopback only, keeps the API key server-side, rejects cross-
 
 Vercel serves the experience from `public/` and deploys the handlers in `api/` as Node.js Functions. Pushes to the connected `main` branch deploy automatically.
 
-Add `OPENROUTER_API_KEY` and, optionally, `OPENROUTER_MODEL` in the Vercel project settings for live judgments. Without a key, the deployed app still runs its complete scripted demo and reports that live AI is unavailable.
+Add `OPENROUTER_API_KEY` and, optionally, `OPENROUTER_MODEL` in the Vercel project settings for host-provided live judgments. This is optional: visitors can instead use **ADD KEY** for a temporary tab-only key. Without either kind of key, the deployed app still runs its complete scripted demo and reports that live AI is unavailable.
 
 Validate the exact production build locally with:
 

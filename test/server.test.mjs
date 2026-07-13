@@ -4,12 +4,44 @@ import {
   createServer,
   extractOutputText,
   judgeObject,
+  parseClientOpenRouterKey,
   parseAppealResponse,
   parseVerdictResponse,
 } from "../server.mjs";
+import { POST as postVercelAppeal } from "../api/appeal.mjs";
 import { GET as getVercelHealth } from "../api/health.mjs";
 import { POST as postVercelJudge } from "../api/judge.mjs";
 import { GET as getVercelStatus } from "../api/status.mjs";
+
+const TEST_CLIENT_KEY = `sk-or-v1-${"a".repeat(32)}`;
+
+describe("browser OpenRouter credential parsing", () => {
+  it("accepts a single well-formed Bearer credential and treats absence as host fallback", () => {
+    assert.equal(parseClientOpenRouterKey(undefined), "");
+    assert.equal(parseClientOpenRouterKey(""), "");
+    assert.equal(parseClientOpenRouterKey(`bEaReR ${TEST_CLIENT_KEY}`), TEST_CLIENT_KEY);
+  });
+
+  it("rejects ambiguous or malformed credentials without echoing them", () => {
+    const malformed = [
+      TEST_CLIENT_KEY,
+      `Basic ${TEST_CLIENT_KEY}`,
+      `Bearer  ${TEST_CLIENT_KEY}`,
+      `Bearer ${TEST_CLIENT_KEY},Bearer ${TEST_CLIENT_KEY}`,
+      "Bearer sk-or-v1-short",
+      `Bearer sk-or-v1-${"a".repeat(504)}`,
+      [TEST_CLIENT_KEY],
+    ];
+    for (const value of malformed) {
+      assert.throws(
+        () => parseClientOpenRouterKey(value),
+        (error) => error.statusCode === 401
+          && /authorization was invalid/i.test(error.message)
+          && !error.message.includes(TEST_CLIENT_KEY),
+      );
+    }
+  });
+});
 
 describe("OpenRouter response parsing", () => {
   const verdict = {
@@ -59,7 +91,7 @@ describe("OpenRouter response parsing", () => {
 });
 
 describe("OpenRouter request contract", () => {
-  it("sends a private, schema-bound multimodal chat request", async () => {
+  it("prefers a request-scoped key and sends a private, schema-bound multimodal request", async () => {
     const previousKey = process.env.OPENROUTER_API_KEY;
     const previousModel = process.env.OPENROUTER_MODEL;
     const originalFetch = globalThis.fetch;
@@ -76,7 +108,7 @@ describe("OpenRouter request contract", () => {
     };
 
     try {
-      process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+      process.env.OPENROUTER_API_KEY = "test-host-openrouter-key";
       process.env.OPENROUTER_MODEL = "test/vision-model";
       globalThis.fetch = async (url, init) => {
         capturedUrl = url;
@@ -89,11 +121,11 @@ describe("OpenRouter request contract", () => {
       const result = await judgeObject({
         image: "data:image/jpeg;base64,AA==",
         hint: "coffee cup",
-      });
+      }, undefined, { clientApiKey: TEST_CLIENT_KEY });
       const body = JSON.parse(capturedInit.body);
 
       assert.equal(capturedUrl, "https://openrouter.ai/api/v1/chat/completions");
-      assert.equal(capturedInit.headers.Authorization, "Bearer test-openrouter-key");
+      assert.equal(capturedInit.headers.Authorization, `Bearer ${TEST_CLIENT_KEY}`);
       assert.equal(capturedInit.headers["X-OpenRouter-Title"], "NO CAN DO");
       assert.equal(body.model, "test/vision-model");
       assert.deepEqual(body.provider, {
@@ -114,6 +146,63 @@ describe("OpenRouter request contract", () => {
       else process.env.OPENROUTER_API_KEY = previousKey;
       if (previousModel === undefined) delete process.env.OPENROUTER_MODEL;
       else process.env.OPENROUTER_MODEL = previousModel;
+    }
+  });
+
+  it("uses the host key when no request-scoped key is supplied", async () => {
+    const previousKey = process.env.OPENROUTER_API_KEY;
+    const originalFetch = globalThis.fetch;
+    let authorization;
+    try {
+      process.env.OPENROUTER_API_KEY = "test-host-openrouter-key";
+      globalThis.fetch = async (_url, init) => {
+        authorization = init.headers.Authorization;
+        return new Response(JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({
+            object_name: "CUP",
+            reframe_name: "TINY VESSEL",
+            headline: "STILL TRYING",
+            monologue: "Empty is just full of opportunity.",
+            verdict: "refuse",
+            potential: 91,
+            footnote: "Hydration pending.",
+          }) } }],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      };
+      await judgeObject({ image: "data:image/jpeg;base64,AA==" });
+      assert.equal(authorization, "Bearer test-host-openrouter-key");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = previousKey;
+    }
+  });
+
+  it("maps request-scoped credential failures without leaking the key", async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      for (const [status, message] of [
+        [401, /rejected that API key/i],
+        [402, /needs credits/i],
+        [403, /cannot access this model/i],
+      ]) {
+        globalThis.fetch = async () => new Response(JSON.stringify({ error: { code: "test" } }), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        });
+        await assert.rejects(
+          judgeObject(
+            { image: "data:image/jpeg;base64,AA==" },
+            undefined,
+            { clientApiKey: TEST_CLIENT_KEY },
+          ),
+          (error) => error.statusCode === status
+            && message.test(error.message)
+            && !error.message.includes(TEST_CLIENT_KEY),
+        );
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 });
@@ -294,6 +383,116 @@ describe("Vercel function transport", () => {
       body: "{}",
     }));
     assert.equal(crossOrigin.status, 403);
+  });
+
+  it("uses a browser key for Vercel judgments without requiring a host key", async () => {
+    const previousKey = process.env.OPENROUTER_API_KEY;
+    const originalFetch = globalThis.fetch;
+    let upstreamAuthorization;
+    try {
+      delete process.env.OPENROUTER_API_KEY;
+      globalThis.fetch = async (_url, init) => {
+        upstreamAuthorization = init.headers.Authorization;
+        return new Response(JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({
+            object_name: "CUP",
+            reframe_name: "TINY VESSEL",
+            headline: "STILL TRYING",
+            monologue: "Empty is just full of opportunity.",
+            verdict: "refuse",
+            potential: 91,
+            footnote: "Hydration pending.",
+          }) } }],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      };
+      const response = await postVercelJudge(new Request("https://no-can-do.vercel.app/api/judge", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TEST_CLIENT_KEY}`,
+          "Content-Type": "application/json",
+          Origin: "https://no-can-do.vercel.app",
+        },
+        body: JSON.stringify({ image: "data:image/jpeg;base64,AA==" }),
+      }));
+      assert.equal(response.status, 200);
+      assert.equal(upstreamAuthorization, `Bearer ${TEST_CLIENT_KEY}`);
+      assert.equal((await response.json()).object_name, "CUP");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = previousKey;
+    }
+  });
+
+  it("forwards the browser key for appeals too", async () => {
+    const previousKey = process.env.OPENROUTER_API_KEY;
+    const originalFetch = globalThis.fetch;
+    let upstreamAuthorization;
+    try {
+      delete process.env.OPENROUTER_API_KEY;
+      globalThis.fetch = async (_url, init) => {
+        upstreamAuthorization = init.headers.Authorization;
+        return new Response(JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({
+            ruling: "APPEAL DENIED",
+            response: "The court finds this cup guilty of having a future.",
+            new_job: "TINY PLANTER",
+            sentence: "Mentor one succulent.",
+            fine: "One sincere apology",
+          }) } }],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      };
+      const response = await postVercelAppeal(new Request("https://no-can-do.vercel.app/api/appeal", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TEST_CLIENT_KEY}`,
+          "Content-Type": "application/json",
+          Origin: "https://no-can-do.vercel.app",
+        },
+        body: JSON.stringify({
+          verdict: { object_name: "CUP", reframe_name: "TINY PLANTER", verdict: "refuse" },
+          appeal: "It is literally trash.",
+        }),
+      }));
+      assert.equal(response.status, 200);
+      assert.equal(upstreamAuthorization, `Bearer ${TEST_CLIENT_KEY}`);
+      assert.equal((await response.json()).ruling, "APPEAL DENIED");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = previousKey;
+    }
+  });
+
+  it("rejects an invalid browser credential without falling back to the host key", async () => {
+    const previousKey = process.env.OPENROUTER_API_KEY;
+    const originalFetch = globalThis.fetch;
+    let upstreamCalls = 0;
+    try {
+      process.env.OPENROUTER_API_KEY = "test-host-openrouter-key";
+      globalThis.fetch = async () => {
+        upstreamCalls += 1;
+        throw new Error("Upstream must not be called for invalid browser credentials.");
+      };
+      const response = await postVercelJudge(new Request("https://no-can-do.vercel.app/api/judge", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer definitely-not-an-openrouter-key",
+          "Content-Type": "application/json",
+          Origin: "https://no-can-do.vercel.app",
+        },
+        body: JSON.stringify({ image: "data:image/jpeg;base64,AA==" }),
+      }));
+      const payload = await response.json();
+      assert.equal(response.status, 401);
+      assert.equal(upstreamCalls, 0);
+      assert.match(payload.error, /authorization was invalid/i);
+      assert.doesNotMatch(JSON.stringify(payload), /definitely-not-an-openrouter-key/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = previousKey;
+    }
   });
 
   it("fails closed without an API key in a Vercel invocation", async () => {
